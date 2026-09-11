@@ -23,7 +23,8 @@ jobs:
           mkdir -p /tmp/bannertool
           unzip -q /tmp/bannertool.zip -d /tmp/bannertool
           install -m 0755 /tmp/bannertool/linux-x86_64/bannertool /opt/devkitpro/tools/bin/bannertool
-          bannertool --help >/dev/null
+          test -x /opt/devkitpro/tools/bin/bannertool
+          command -v bannertool
 
       - name: Build ARM application
         run: |
