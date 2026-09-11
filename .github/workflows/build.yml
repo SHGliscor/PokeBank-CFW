@@ -87,7 +87,7 @@ jobs:
           cp build-out/PokeBank-CFW.smdh dist/
           cp PokeBank-CFW.cia dist/
           cp README-TESTING.txt dist/
-          sha256sum dist/PokeBank-CFW.3dsx dist/PokeBank-CFW.cia > dist/SHA256SUMS.txt
+          (cd dist && sha256sum PokeBank-CFW.3dsx PokeBank-CFW.cia > SHA256SUMS.txt)
 
           test -f dist/PokeBank-CFW.3dsx
           test -f dist/PokeBank-CFW.smdh
