@@ -168,6 +168,53 @@ static void close_main_save(FS_Archive archive, Handle file)
     if (archive) FSUSER_CloseArchive(archive);
 }
 
+bool oras_open_selected(u64 title_id, FS_MediaType media,
+                        OrasSource *out, char *detail, size_t detail_size)
+{
+    if (!out || !is_oras_title(title_id)) {
+        if (detail && detail_size) snprintf(detail, detail_size, "Unsupported ORAS title");
+        return false;
+    }
+
+    memset(out, 0, sizeof(*out));
+    out->found = true;
+    out->title_id = title_id;
+    out->media = media;
+    out->game = (title_id == OR_TITLE_ID) ? ORAS_GAME_OMEGA_RUBY : ORAS_GAME_ALPHA_SAPPHIRE;
+
+    FS_Archive archive = 0;
+    Handle file = 0;
+    u64 size = 0;
+    Result res = open_main_save(out, &archive, &file, &size);
+    if (R_FAILED(res)) {
+        if (detail && detail_size) snprintf(detail, detail_size, "Save open failed: %08lX",
+                 (unsigned long)(u32)res);
+        memset(out, 0, sizeof(*out));
+        return false;
+    }
+
+    out->save_size = size;
+    if (size < ORAS_SAVE_SIZE) {
+        if (detail && detail_size) snprintf(detail, detail_size, "Save too small: %lu",
+                 (unsigned long)size);
+        close_main_save(archive, file);
+        memset(out, 0, sizeof(*out));
+        return false;
+    }
+
+    u8 current = 0;
+    u32 bytes_read = 0;
+    res = FSFILE_Read(file, &bytes_read, ORAS_LAST_VIEWED_BOX_OFFSET,
+                      &current, sizeof(current));
+    out->current_box = (R_SUCCEEDED(res) && bytes_read == 1 &&
+                        current < ORAS_BOX_COUNT) ? current : 0;
+    close_main_save(archive, file);
+
+    if (detail && detail_size) snprintf(detail, detail_size, "%s %s save OK",
+             oras_game_name(out->game), oras_media_name(out->media));
+    return true;
+}
+
 bool oras_detect(OrasSource *out, char *detail, size_t detail_size)
 {
     if (!out) return false;
@@ -192,46 +239,7 @@ bool oras_detect(OrasSource *out, char *detail, size_t detail_size)
         return false;
     }
 
-    out->found = true;
-    out->title_id = id;
-    out->media = media;
-    out->game = (id == OR_TITLE_ID) ? ORAS_GAME_OMEGA_RUBY : ORAS_GAME_ALPHA_SAPPHIRE;
-
-    FS_Archive archive = 0;
-    Handle file = 0;
-    u64 size = 0;
-    Result res = open_main_save(out, &archive, &file, &size);
-    if (R_FAILED(res)) {
-        snprintf(detail, detail_size, "Save open failed: %08lX",
-                 (unsigned long)(u32)res);
-        memset(out, 0, sizeof(*out));
-        return false;
-    }
-
-    out->save_size = size;
-    if (size < ORAS_SAVE_SIZE) {
-        snprintf(detail, detail_size, "Save too small: %lu bytes",
-                 (unsigned long)size);
-        close_main_save(archive, file);
-        memset(out, 0, sizeof(*out));
-        return false;
-    }
-
-    u8 current = 0;
-    u32 bytes_read = 0;
-    res = FSFILE_Read(file, &bytes_read, ORAS_LAST_VIEWED_BOX_OFFSET,
-                      &current, sizeof(current));
-    if (R_SUCCEEDED(res) && bytes_read == 1 && current < ORAS_BOX_COUNT) {
-        out->current_box = current;
-    } else {
-        out->current_box = 0;
-    }
-
-    close_main_save(archive, file);
-
-    snprintf(detail, detail_size, "%s %s save OK",
-             oras_game_name(out->game), oras_media_name(out->media));
-    return true;
+    return oras_open_selected(id, media, out, detail, detail_size);
 }
 
 static void pk6_decrypt(u8 data[PK6_BOX_LENGTH])
@@ -272,6 +280,17 @@ static u16 pk6_checksum(const u8 data[PK6_BOX_LENGTH])
     return (u16)sum;
 }
 
+static void copy_pk6_text_ascii(char out[14], const u8 *utf16le)
+{
+    unsigned w = 0;
+    for (unsigned i = 0; i < 13 && w < 13; ++i) {
+        u16 ch = read_le16(utf16le + i * 2);
+        if (ch == 0 || ch == 0xFFFF) break;
+        out[w++] = (ch >= 32 && ch <= 126) ? (char)ch : '?';
+    }
+    out[w] = '\0';
+}
+
 static void decode_slot(const u8 raw[PK6_BOX_LENGTH], OrasSlotInfo *out)
 {
     memset(out, 0, sizeof(*out));
@@ -294,11 +313,18 @@ static void decode_slot(const u8 raw[PK6_BOX_LENGTH], OrasSlotInfo *out)
     if (out->species == 0 || out->species > 721) return;
 
     out->occupied = true;
+    out->held_item = read_le16(data + 0x0A);
     out->tid = read_le16(data + 0x0C);
     out->sid = read_le16(data + 0x0E);
     out->ability = data[0x14];
     out->pid = read_le32(data + 0x18);
     out->nature = data[0x1C];
+    out->gender = (data[0x1D] >> 1) & 0x3;
+    out->form = data[0x1D] >> 3;
+    u32 ivword = read_le32(data + 0x74);
+    for (unsigned i = 0; i < 6; ++i) out->ivs[i] = (ivword >> (5u * i)) & 0x1F;
+    copy_pk6_text_ascii(out->nickname, data + 0x40);
+    copy_pk6_text_ascii(out->ot_name, data + 0xB0);
 
     const u16 stored_checksum = read_le16(data + 0x06);
     out->checksum_valid = stored_checksum == pk6_checksum(data);
@@ -306,6 +332,13 @@ static void decode_slot(const u8 raw[PK6_BOX_LENGTH], OrasSlotInfo *out)
     const u16 psv = (u16)((out->pid & 0xFFFFu) ^ (out->pid >> 16));
     const u16 tsv = (u16)(out->tid ^ out->sid);
     out->shiny = (u16)(psv ^ tsv) < 16u;
+}
+
+bool oras_decode_pk6(const u8 raw[PK6_BOX_LENGTH], OrasSlotInfo *out)
+{
+    if (!raw || !out) return false;
+    decode_slot(raw, out);
+    return out->occupied && out->checksum_valid;
 }
 
 bool oras_read_box(const OrasSource *source, unsigned box,
