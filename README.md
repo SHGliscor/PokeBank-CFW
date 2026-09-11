@@ -1,42 +1,46 @@
 # PokeBank-CFW
 
-Native Nintendo 3DS Pokémon storage targeting Generations 1–7.
+Native Nintendo 3DS homebrew Pokemon storage.
 
-## Current milestone — v0.2 alpha
+## v0.3-alpha
 
-PokeBank-CFW now has the on-console storage foundation rather than only a smoke test:
+The first real game adapter is now included for Pokemon Omega Ruby / Alpha Sapphire.
 
-- Native Nintendo 3DS application
-- `.3dsx` and installable `.cia` build targets
-- GitHub Actions cloud compilation using devkitARM/libctru
-- Persistent Bank at `sdmc:/3ds/PokeBank-CFW/bank.dat`
-- Versioned Bank header with format validation
-- 100 Bank boxes × 30 slots = 3,000 Pokémon slots
-- Fixed 512-byte records so native Gen 1–7 Pokémon payloads can be preserved without converting everything to Gen 7
-- D-pad slot navigation
-- L/R box navigation
-- Slot inspection
-- SD creation/read validation
-- Home Menu icon/banner assets
+Current features:
+- Native CIA and 3DSX builds
+- Persistent Bank on SD at sdmc:/3ds/PokeBank-CFW/bank.dat
+- 100 Bank boxes x 30 slots = 3,000 slots
+- Detects Omega Ruby / Alpha Sapphire from cartridge or installed SD title
+- Opens the ORAS /main save read-only
+- Reads all 31 ORAS PC boxes
+- Decrypts boxed PK6 enough to identify species, PID, nature ID, ability ID, shiny state, and checksum validity
+- Copies a selected native 232-byte PK6 into a selected Bank slot
+- Keeps the original ORAS Pokemon untouched
+- Refuses invalid PK6 checksums
+- Requires a second X press before overwriting an occupied Bank slot
 
-## Safety state
+Important: v0.3-alpha does not write to the Pokemon game save. Only PokeBank-CFW bank.dat is modified.
 
-The current alpha **does not modify Pokémon game saves yet**. It only creates and reads PokeBank-CFW's own SD-card Bank file. Game writes will not be enabled until the relevant save adapter has backup, validation, checksum and read-back verification.
+## Controls
 
-## Planned game adapters
+- D-Pad: move selected slot in the focused box
+- L/R: change focused box
+- Y: switch focus between Bank and ORAS
+- A: inspect selected slot
+- X: copy selected ORAS Pokemon into selected Bank slot
+- B: refresh ORAS box or re-check Bank
+- SELECT: rescan for ORAS
+- START: exit
 
-1. Gen 6 — Pokémon X/Y and Omega Ruby/Alpha Sapphire
-2. Gen 7 — Sun/Moon and Ultra Sun/Ultra Moon
-3. Gen 1/2 — official 3DS Virtual Console titles
-4. Gen 4/5 — DS cartridges and compatible SD save sources
-5. Gen 3 — compatible GBA/VC/SD save sources
+## Next milestones
 
-ORAS is the first deposit/withdraw target.
-
-## Bank design
-
-A deposited Pokémon remains in its native generation format. For example, a Crystal Pokémon is stored as its Gen 2 payload and an Alpha Sapphire Pokémon as its Gen 6 payload. Cross-generation conversion will be a separate transfer operation rather than something that happens automatically on deposit.
-
-## Building
-
-No local compiler is required for normal testing. Push to `main` or run **Build PokeBank-CFW** from GitHub Actions. Successful runs upload a build artifact containing the `.cia`, `.3dsx`, `.smdh`, checksums and testing instructions.
+1. Hardware-verify cartridge and SD ORAS detection
+2. Verify all 31 ORAS boxes and PK6 decoding
+3. Add automatic save backup support
+4. Add safe ORAS withdrawal/write support with save resigning
+5. Add Pokemon X/Y
+6. Add Gen 7
+7. Add VC Gen 1/2
+8. Add DS Gen 4/5
+9. Add Gen 3
+10. Add official cross-generation transfer rules
