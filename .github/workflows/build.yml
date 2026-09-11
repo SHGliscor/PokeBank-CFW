@@ -23,7 +23,9 @@ jobs:
           test -f PokeBank-CFW.elf
           test -f PokeBank-CFW.3dsx
           test -f PokeBank-CFW.smdh
-          ls -lah PokeBank-CFW.elf PokeBank-CFW.3dsx PokeBank-CFW.smdh
+          3dstool -ctf romfs build/romfs.bin --romfs-dir romfs
+          test -f build/romfs.bin
+          ls -lah PokeBank-CFW.elf PokeBank-CFW.3dsx PokeBank-CFW.smdh build/romfs.bin
 
       - name: Upload ARM build
         uses: actions/upload-artifact@v4
@@ -33,6 +35,7 @@ jobs:
             PokeBank-CFW.elf
             PokeBank-CFW.3dsx
             PokeBank-CFW.smdh
+            build/romfs.bin
           if-no-files-found: error
 
   package-cia:
@@ -78,6 +81,7 @@ jobs:
             -rsf cia.rsf \
             -icon build/icon.icn \
             -banner build/banner.bnr \
+            -romfs build-out/build/romfs.bin \
             -DAPP_TITLE="PokeBank-CFW" \
             -DAPP_PRODUCT_CODE="CTR-H-PBCF" \
             -DAPP_UNIQUE_ID="0xBCF01" \
