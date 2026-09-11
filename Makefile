@@ -18,6 +18,8 @@ APP_TITLE       := PokeBank-CFW
 APP_DESCRIPTION := Local Gen 1-7 Pokemon storage
 APP_AUTHOR      := SHGliscor
 ICON            := assets/icon.png
+BANNER          := assets/banner.png
+BANNER_AUDIO    := assets/banner.wav
 
 APP_PRODUCT_CODE := CTR-H-PBCF
 APP_UNIQUE_ID    := 0xBCF01
@@ -77,9 +79,12 @@ clean:
 cia: all
 	@command -v bannertool >/dev/null || (echo "ERROR: bannertool not found" && exit 1)
 	@command -v makerom >/dev/null || (echo "ERROR: makerom not found" && exit 1)
+	@test -f "$(ICON)" || (echo "ERROR: missing $(ICON)" && exit 1)
+	@test -f "$(BANNER)" || (echo "ERROR: missing $(BANNER)" && exit 1)
+	@test -f "$(BANNER_AUDIO)" || (echo "ERROR: missing $(BANNER_AUDIO)" && exit 1)
 	@mkdir -p $(BUILD)
 	@bannertool makesmdh -s "$(APP_TITLE)" -l "$(APP_DESCRIPTION)" -p "$(APP_AUTHOR)" -i "$(ICON)" -o "$(BUILD)/icon.icn"
-	@bannertool makebanner -i "assets/banner.png" -o "$(BUILD)/banner.bnr"
+	@bannertool makebanner -i "$(BANNER)" -a "$(BANNER_AUDIO)" -o "$(BUILD)/banner.bnr"
 	@makerom -f cia -target t -exefslogo \
 		-o "$(TARGET).cia" \
 		-elf "$(OUTPUT).elf" \
