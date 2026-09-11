@@ -22,6 +22,8 @@ AccessControlInfo:
   UseExtSaveData          : false
 
   FileSystemAccess:
+   - CategoryFileSystemTool
+   - CardBoard
    - Debug
    - DirectSdmc
    - DirectSdmcWrite
@@ -105,6 +107,7 @@ AccessControlInfo:
 
   ServiceAccessControl:
    - APT:U
+   - am:net
    - cfg:u
    - fs:USER
    - gsp::Gpu
@@ -118,6 +121,7 @@ SystemControlInfo:
   StackSize: 0x40000
 
   Dependency:
+    am: 0x0004013000001502
     cfg: 0x0004013000001702
     gsp: 0x0004013000001c02
     hid: 0x0004013000001d02
