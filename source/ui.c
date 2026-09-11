@@ -128,7 +128,7 @@ static void draw_gender(u8 gender, float x, float y)
 bool ui_init(void)
 {
     gfxInitDefault();
-    if (!romfsInit()) return false;
+    if (R_FAILED(romfsInit())) return false;
     if (!C3D_Init(C3D_DEFAULT_CMDBUF_SIZE)) return false;
     if (!C2D_Init(C2D_DEFAULT_MAX_OBJECTS)) return false;
     C2D_Prepare();
