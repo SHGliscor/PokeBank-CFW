@@ -1,0 +1,42 @@
+name: Build PokeBank-CFW
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*" ]
+
+jobs:
+  build-3ds:
+    runs-on: ubuntu-latest
+    container:
+      image: devkitpro/devkitarm:latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build 3DSX
+        run: |
+          make clean
+          make -j2
+          test -f PokeBank-CFW.3dsx
+          test -f PokeBank-CFW.elf
+
+      - name: Install CIA packaging tools
+        run: |
+          chmod +x scripts/install_cia_tools.sh
+          ./scripts/install_cia_tools.sh
+
+      - name: Build CIA and package
+        run: |
+          export PATH="/opt/devkitpro/tools/bin:$PATH"
+          make package
+          ls -lah dist
+
+      - name: Upload ready-to-test build
+        uses: actions/upload-artifact@v4
+        with:
+          name: PokeBank-CFW-build-${{ github.run_number }}
+          path: dist/*
+          if-no-files-found: error
