@@ -252,7 +252,7 @@ static void draw_ui(PrintConsole *top, PrintConsole *bottom,
                     unsigned bank_box, unsigned bank_selected,
                     bool game_focus,
                     const OrasSource *source, bool game_box_ok,
-                    const OrasSlotInfo s_game_slots[ORAS_SLOTS_PER_BOX],
+                    const OrasSlotInfo game_slots[ORAS_SLOTS_PER_BOX],
                     unsigned game_box, unsigned game_selected,
                     const char *game_detail, const char *action_detail,
                     bool overwrite_armed) {
@@ -265,7 +265,7 @@ static void draw_ui(PrintConsole *top, PrintConsole *bottom,
     printf("BANK BOX %03u/%u %s\n", bank_box + 1, (unsigned)BANK_BOXES,
            game_focus ? "" : "<FOCUS>");
     printf("%s\n\n", bank_ok ? bank_detail : "BANK ERROR");
-    draw_grid_bank(bank_slots, bank_selected, !game_focus);
+    draw_grid_bank(s_bank_view, bank_selected, !game_focus);
 
     const BankSlot *b = &s_bank_view[bank_selected];
     printf("\nBank slot %u: ", bank_selected + 1);
@@ -294,8 +294,8 @@ static void draw_ui(PrintConsole *top, PrintConsole *bottom,
         printf("%s\n\n", game_detail);
 
         if (game_box_ok) {
-            draw_grid_game(s_game_slots, game_selected, game_focus);
-            const OrasSlotInfo *g = &s_game_slots[game_selected];
+            draw_grid_game(game_slots, game_selected, game_focus);
+            const OrasSlotInfo *g = &game_slots[game_selected];
             printf("\nGame slot %u: ", game_selected + 1);
             if (!g->occupied) {
                 printf("empty\n");
