@@ -9,13 +9,16 @@ Hardware status:
 - ORAS 31-box reading: PASS
 - PK6 decryption/checksum/shiny decoding: PASS
 - ORAS -> Bank copy: PASS
+- Bank -> ORAS empty-slot copy: PASS
+- ORAS save checksum resigning + commit: PASS
+- In-game save/reboot persistence after withdrawal: PASS
 - Bank persistence after reboot: PASS
 - Original ORAS Pokemon remains untouched after deposit: PASS
 
 New in v0.4-alpha:
 - automatic rotating Bank backups before every Bank write
 - automatic rotating ORAS /main backup before every game-save write
-- Bank -> ORAS copy mode
+- Bank -> ORAS copy mode (hardware-verified for empty destination slots)
 - ORAS box checksum resigning (storage block)
 - save archive commit
 - raw PK6 and box-checksum read-back verification
@@ -41,4 +44,4 @@ Controls:
 - SELECT rescans ORAS
 - START exits
 
-Do not treat ORAS writes as stable until v0.4-alpha passes real-hardware withdrawal testing.
+ORAS write support is now hardware-verified for empty destination slots, including backup creation, save commit, checksum resigning, in-game save, and reboot persistence. Occupied-slot overwrite remains the next write-path test.
