@@ -16,22 +16,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build 3DSX
-        run: |
-          make clean
-          make -j2
-          test -f PokeBank-CFW.3dsx
-          test -f PokeBank-CFW.elf
-
       - name: Install CIA packaging tools
         run: |
           chmod +x scripts/install_cia_tools.sh
           ./scripts/install_cia_tools.sh
 
-      - name: Build CIA and package
+      - name: Build and package
         run: |
           export PATH="/opt/devkitpro/tools/bin:$PATH"
+          make clean
           make package
+          test -f dist/PokeBank-CFW.3dsx
+          test -f dist/PokeBank-CFW.smdh
+          test -f dist/PokeBank-CFW.cia
           ls -lah dist
 
       - name: Upload ready-to-test build
