@@ -7,8 +7,10 @@
 #include <stdbool.h>
 
 #include "oras.h"
+#include "game_select.h"
+#include "ui.h"
 
-#define APP_VERSION "0.4-alpha"
+#define APP_VERSION "0.5-alpha"
 #define APP_DIR "sdmc:/3ds/PokeBank-CFW"
 #define BANK_FILE APP_DIR "/bank.dat"
 #define BACKUP_DIR APP_DIR "/backups"
@@ -285,136 +287,175 @@ static bool bank_write_pk6(unsigned box, unsigned slot,
     return true;
 }
 
-static void move_selection(unsigned *selected, u32 down) {
+static UiPokemon s_bank_ui[SLOTS_PER_BOX];
+static UiPokemon s_game_ui[SLOTS_PER_BOX];
+static UiPokemon s_detail_ui;
+
+typedef enum {
+    SCREEN_GAME_SELECTOR = 0,
+    SCREEN_BANK
+} AppScreen;
+
+static void move_selection(unsigned *selected, u32 down)
+{
     if ((down & KEY_LEFT) && (*selected % 6)) (*selected)--;
     if ((down & KEY_RIGHT) && (*selected % 6 < 5)) (*selected)++;
     if ((down & KEY_UP) && *selected >= 6) *selected -= 6;
     if ((down & KEY_DOWN) && *selected + 6 < SLOTS_PER_BOX) *selected += 6;
 }
 
-static void draw_grid_bank(const BankSlot slots[SLOTS_PER_BOX],
-                           unsigned selected, bool focus) {
-    for (unsigned row = 0; row < 5; ++row) {
-        for (unsigned col = 0; col < 6; ++col) {
-            unsigned s = row * 6 + col;
-            char c = slots[s].occupied ? 'P' : '.';
-            if (focus && s == selected) printf("[%c]", c);
-            else if (!focus && s == selected) printf("(%c)", c);
-            else printf(" %c ", c);
-        }
-        printf("\n");
+static void move_game_selector(int *selected, u32 down)
+{
+    if (down & KEY_LEFT) {
+        if ((*selected % 2) == 1) (*selected)--;
+    }
+    if (down & KEY_RIGHT) {
+        if ((*selected % 2) == 0) (*selected)++;
+    }
+    if (down & KEY_UP) {
+        if (*selected >= 2) *selected -= 2;
+    }
+    if (down & KEY_DOWN) {
+        if (*selected + 2 < (int)GAME_SELECTOR_COUNT) *selected += 2;
     }
 }
 
-static void draw_grid_game(const OrasSlotInfo slots[ORAS_SLOTS_PER_BOX],
-                           unsigned selected, bool focus) {
-    for (unsigned row = 0; row < 5; ++row) {
-        for (unsigned col = 0; col < 6; ++col) {
-            unsigned s = row * 6 + col;
-            char c = slots[s].occupied ? (slots[s].shiny ? '*' : 'P') : '.';
-            if (focus && s == selected) printf("[%c]", c);
-            else if (!focus && s == selected) printf("(%c)", c);
-            else printf(" %c ", c);
-        }
-        printf("\n");
-    }
+static void pokemon_view_from_oras(UiPokemon *dst, const OrasSlotInfo *src)
+{
+    memset(dst, 0, sizeof(*dst));
+    if (!src || !src->occupied) return;
+
+    dst->occupied = true;
+    dst->shiny = src->shiny;
+    dst->species = src->species;
+    dst->held_item = src->held_item;
+    dst->tid = src->tid;
+    dst->sid = src->sid;
+    dst->pid = src->pid;
+    dst->nature = src->nature;
+    dst->ability = src->ability;
+    dst->gender = src->gender;
+    dst->form = src->form;
+    memcpy(dst->ivs, src->ivs, sizeof(dst->ivs));
+    memcpy(dst->nickname, src->nickname, sizeof(dst->nickname));
+    memcpy(dst->ot_name, src->ot_name, sizeof(dst->ot_name));
 }
 
-static void draw_ui(PrintConsole *top, PrintConsole *bottom,
-                    bool bank_ok, const char *bank_detail,
-                    unsigned bank_box, unsigned bank_selected,
-                    bool game_focus,
-                    const OrasSource *source, bool game_box_ok,
-                    const OrasSlotInfo game_slots[ORAS_SLOTS_PER_BOX],
-                    unsigned game_box, unsigned game_selected,
-                    const char *game_detail, const char *action_detail,
-                    bool overwrite_armed) {
-    memset(s_bank_view, 0, sizeof(s_bank_view));
-    if (bank_ok) bank_read_box(bank_box, s_bank_view);
+static void rebuild_ui_views(bool bank_ok, unsigned bank_box,
+                             bool game_box_ok,
+                             bool game_focus,
+                             unsigned bank_selected,
+                             unsigned game_selected)
+{
+    memset(s_bank_ui, 0, sizeof(s_bank_ui));
+    memset(s_game_ui, 0, sizeof(s_game_ui));
+    memset(&s_detail_ui, 0, sizeof(s_detail_ui));
 
-    consoleSelect(top);
-    consoleClear();
-    printf("\x1b[1;1HPOKEBANK-CFW v%s\n", APP_VERSION);
-    printf("BANK BOX %03u/%u %s\n", bank_box + 1, (unsigned)BANK_BOXES,
-           game_focus ? "" : "<FOCUS>");
-    printf("%s\n\n", bank_ok ? bank_detail : "BANK ERROR");
-    draw_grid_bank(s_bank_view, bank_selected, !game_focus);
-
-    const BankSlot *b = &s_bank_view[bank_selected];
-    printf("\nBank slot %u: ", bank_selected + 1);
-    if (!b->occupied) {
-        printf("empty\n");
-    } else {
-        printf("Gen %u species %u%s\n",
-               b->generation, b->species,
-               (b->flags & BANK_FLAG_SHINY) ? " SHINY" : "");
-        printf("Native %u bytes | source %08lX\n",
-               b->payload_size, (unsigned long)(u32)b->source_title_id);
+    if (bank_ok && bank_read_box(bank_box, s_bank_view)) {
+        for (unsigned i = 0; i < SLOTS_PER_BOX; ++i) {
+            BankSlot *b = &s_bank_view[i];
+            if (!b->occupied) continue;
+            s_bank_ui[i].occupied = true;
+            s_bank_ui[i].species = b->species;
+            s_bank_ui[i].shiny = (b->flags & BANK_FLAG_SHINY) != 0;
+        }
     }
 
-    printf("\n%s\n", action_detail);
-    if (overwrite_armed) printf("OVERWRITE ARMED: press X again\n");
+    if (game_box_ok) {
+        for (unsigned i = 0; i < SLOTS_PER_BOX; ++i)
+            pokemon_view_from_oras(&s_game_ui[i], &s_game_slots[i]);
+    }
 
-    consoleSelect(bottom);
-    consoleClear();
-
-    if (source && source->found) {
-        printf("\x1b[1;1H%s - %s\n",
-               oras_game_name(source->game), oras_media_name(source->media));
-        printf("GAME BOX %02u/%u %s\n",
-               game_box + 1, (unsigned)ORAS_BOX_COUNT,
-               game_focus ? "<FOCUS>" : "");
-        printf("%s\n\n", game_detail);
-
-        if (game_box_ok) {
-            draw_grid_game(game_slots, game_selected, game_focus);
-            const OrasSlotInfo *g = &game_slots[game_selected];
-            printf("\nGame slot %u: ", game_selected + 1);
-            if (!g->occupied) {
-                printf("empty\n");
+    if (game_focus) {
+        s_detail_ui = s_game_ui[game_selected];
+    } else if (s_bank_view[bank_selected].occupied) {
+        BankSlot *b = &s_bank_view[bank_selected];
+        if (b->generation == 6 &&
+            b->payload_size == PK6_BOX_LENGTH &&
+            b->checksum == payload_checksum(b->payload, b->payload_size)) {
+            OrasSlotInfo decoded;
+            memset(&decoded, 0, sizeof(decoded));
+            if (oras_decode_pk6(b->payload, &decoded)) {
+                pokemon_view_from_oras(&s_detail_ui, &decoded);
             } else {
-                printf("species %u%s\n", g->species, g->shiny ? " SHINY" : "");
-                printf("Nature %u Ability %u PK6 %s\n",
-                       g->nature, g->ability,
-                       g->checksum_valid ? "OK" : "BAD CHECKSUM");
+                s_detail_ui.occupied = true;
+                s_detail_ui.species = b->species;
+                s_detail_ui.shiny = (b->flags & BANK_FLAG_SHINY) != 0;
             }
         } else {
-            printf("Unable to read game box.\n");
+            s_detail_ui.occupied = true;
+            s_detail_ui.species = b->species;
+            s_detail_ui.shiny = (b->flags & BANK_FLAG_SHINY) != 0;
         }
-    } else {
-        printf("\x1b[1;1HORAS SOURCE: not connected\n\n");
-        printf("%s\n", game_detail);
-        printf("Press SELECT to scan cartridge/SD.\n");
     }
-
-    printf("\nY Focus L/R Box D-Pad Slot\n");
-    printf("A Inspect X Copy focused side\n");
-    printf("B Refresh SELECT Detect START Exit\n");
 }
 
-int main(int argc, char **argv) {
+static bool open_selected_game(const GameEntry *entry,
+                               OrasSource *source,
+                               unsigned *game_box,
+                               unsigned *game_selected,
+                               bool *game_box_ok,
+                               bool *game_focus,
+                               char *game_detail,
+                               size_t game_detail_size,
+                               char *action_detail,
+                               size_t action_detail_size)
+{
+    if (!entry || !entry->present) {
+        snprintf(action_detail, action_detail_size, "Game is not detected.");
+        return false;
+    }
+    if (!entry->adapter_ready) {
+        snprintf(action_detail, action_detail_size,
+                 "%s detected; adapter is coming next.", entry->name);
+        return false;
+    }
+
+    memset(source, 0, sizeof(*source));
+    memset(s_game_slots, 0, sizeof(s_game_slots));
+
+    if (!oras_open_selected(entry->title_id, entry->media,
+                            source, game_detail, game_detail_size)) {
+        snprintf(action_detail, action_detail_size,
+                 "Could not open %s save.", entry->name);
+        *game_box_ok = false;
+        return false;
+    }
+
+    *game_box = source->current_box;
+    *game_selected = 0;
+    *game_box_ok = oras_read_box(source, *game_box, s_game_slots,
+                                 game_detail, game_detail_size);
+    *game_focus = *game_box_ok;
+
+    snprintf(action_detail, action_detail_size,
+             "%s connected. GAME and BANK are live.", entry->name);
+    return *game_box_ok;
+}
+
+int main(int argc, char **argv)
+{
     (void)argc;
     (void)argv;
 
-    gfxInitDefault();
-
-    PrintConsole top, bottom;
-    consoleInit(GFX_TOP, &top);
-    consoleInit(GFX_BOTTOM, &bottom);
+    if (!ui_init()) return 1;
 
     char bank_detail[96];
-    char game_detail[128];
-    char action_detail[128] = "ORAS deposit path passed; write test armed.";
+    char game_detail[128] = "Choose a game.";
+    char action_detail[128] = "Choose a detected game to open its boxes.";
 
     bool bank_ok = bank_validate(bank_detail, sizeof(bank_detail));
 
     Result am_res = oras_services_init();
     if (R_FAILED(am_res)) {
-        snprintf(game_detail, sizeof(game_detail),
-                 "AM init failed: %08lX", (unsigned long)(u32)am_res);
-    } else {
-        snprintf(game_detail, sizeof(game_detail), "Scanning ORAS...");
+        snprintf(action_detail, sizeof(action_detail),
+                 "AM service failed: %08lX", (unsigned long)(u32)am_res);
     }
+
+    GameEntry games[GAME_SELECTOR_COUNT];
+    memset(games, 0, sizeof(games));
+    if (R_SUCCEEDED(am_res)) games_scan(games);
+    int game_choice = games_first_ready(games);
 
     OrasSource source;
     memset(&source, 0, sizeof(source));
@@ -422,36 +463,76 @@ int main(int argc, char **argv) {
 
     unsigned bank_box = 0, bank_selected = 0;
     unsigned game_box = 0, game_selected = 0;
-    bool game_focus = false, game_box_ok = false, overwrite_armed = false;
+    bool game_focus = false;
+    bool game_box_ok = false;
+    bool overwrite_armed = false;
 
-    if (R_SUCCEEDED(am_res) &&
-        oras_detect(&source, game_detail, sizeof(game_detail))) {
-        game_box = source.current_box;
-        game_box_ok = oras_read_box(&source, game_box, s_game_slots,
-                                    game_detail, sizeof(game_detail));
-        game_focus = game_box_ok;
-    }
-
-    draw_ui(&top, &bottom, bank_ok, bank_detail,
-            bank_box, bank_selected, game_focus,
-            &source, game_box_ok, s_game_slots,
-            game_box, game_selected,
-            game_detail, action_detail, overwrite_armed);
+    AppScreen screen = SCREEN_GAME_SELECTOR;
 
     while (aptMainLoop()) {
         hidScanInput();
         u32 down = hidKeysDown();
-        bool redraw = false;
 
         if (down & KEY_START) break;
+
+        if (screen == SCREEN_GAME_SELECTOR) {
+            if (down & (KEY_LEFT | KEY_RIGHT | KEY_UP | KEY_DOWN))
+                move_game_selector(&game_choice, down);
+
+            if (down & KEY_TOUCH) {
+                touchPosition pos;
+                hidTouchRead(&pos);
+                int hit = ui_game_index_at_touch(pos);
+                if (hit >= 0) game_choice = hit;
+            }
+
+            if (down & KEY_X) {
+                games_scan(games);
+                game_choice = games_first_ready(games);
+                snprintf(action_detail, sizeof(action_detail), "Game list rescanned.");
+            }
+
+            if (down & KEY_A) {
+                if (open_selected_game(&games[game_choice], &source,
+                                       &game_box, &game_selected,
+                                       &game_box_ok, &game_focus,
+                                       game_detail, sizeof(game_detail),
+                                       action_detail, sizeof(action_detail))) {
+                    overwrite_armed = false;
+                    screen = SCREEN_BANK;
+                }
+            }
+
+            ui_render_game_selector(games, game_choice, action_detail);
+            continue;
+        }
+
+        if (down & KEY_SELECT) {
+            screen = SCREEN_GAME_SELECTOR;
+            overwrite_armed = false;
+            snprintf(action_detail, sizeof(action_detail),
+                     "Choose another game.");
+            ui_render_game_selector(games, game_choice, action_detail);
+            continue;
+        }
+
+        if (down & KEY_TOUCH) {
+            touchPosition pos;
+            hidTouchRead(&pos);
+            int slot = ui_game_slot_at_touch(pos);
+            if (slot >= 0) {
+                game_selected = (unsigned)slot;
+                game_focus = true;
+                overwrite_armed = false;
+            }
+        }
 
         if (down & KEY_Y) {
             if (source.found && game_box_ok) {
                 game_focus = !game_focus;
                 overwrite_armed = false;
                 snprintf(action_detail, sizeof(action_detail),
-                         "Focus: %s", game_focus ? "GAME" : "BANK");
-                redraw = true;
+                         "%s selected.", game_focus ? "Game box" : "Bank box");
             }
         }
 
@@ -459,7 +540,6 @@ int main(int argc, char **argv) {
             if (game_focus && source.found) move_selection(&game_selected, down);
             else move_selection(&bank_selected, down);
             overwrite_armed = false;
-            redraw = true;
         }
 
         if (down & KEY_L) {
@@ -471,7 +551,6 @@ int main(int argc, char **argv) {
                 bank_box = (bank_box + BANK_BOXES - 1) % BANK_BOXES;
             }
             overwrite_armed = false;
-            redraw = true;
         }
 
         if (down & KEY_R) {
@@ -483,27 +562,6 @@ int main(int argc, char **argv) {
                 bank_box = (bank_box + 1) % BANK_BOXES;
             }
             overwrite_armed = false;
-            redraw = true;
-        }
-
-        if (down & KEY_SELECT) {
-            memset(&source, 0, sizeof(source));
-            memset(s_game_slots, 0, sizeof(s_game_slots));
-            game_box_ok = false;
-            if (oras_detect(&source, game_detail, sizeof(game_detail))) {
-                game_box = source.current_box;
-                game_selected = 0;
-                game_box_ok = oras_read_box(&source, game_box, s_game_slots,
-                                            game_detail, sizeof(game_detail));
-                game_focus = game_box_ok;
-                snprintf(action_detail, sizeof(action_detail),
-                         "Connected to %s read-only.", oras_game_name(source.game));
-            } else {
-                game_focus = false;
-                snprintf(action_detail, sizeof(action_detail), "ORAS source not available.");
-            }
-            overwrite_armed = false;
-            redraw = true;
         }
 
         if (down & KEY_B) {
@@ -512,41 +570,34 @@ int main(int argc, char **argv) {
                                             game_detail, sizeof(game_detail));
                 snprintf(action_detail, sizeof(action_detail),
                          "%s", game_box_ok ? "Game box refreshed." : "Game refresh failed.");
-            } else {
-                bank_ok = bank_validate(bank_detail, sizeof(bank_detail));
-                snprintf(action_detail, sizeof(action_detail), "Bank re-checked.");
             }
+            bank_ok = bank_validate(bank_detail, sizeof(bank_detail));
             overwrite_armed = false;
-            redraw = true;
         }
 
         if (down & KEY_A) {
-            if (game_focus && source.found && game_box_ok) {
+            if (game_focus && game_box_ok) {
                 const OrasSlotInfo *g = &s_game_slots[game_selected];
                 if (g->occupied) {
                     snprintf(action_detail, sizeof(action_detail),
-                             "GAME %u/%u species %u PID %08lX%s",
-                             game_box + 1, game_selected + 1, g->species,
-                             (unsigned long)g->pid, g->shiny ? " SHINY" : "");
+                             "%s%s | %s | %s",
+                             g->nickname[0] ? g->nickname : ui_species_name(g->species),
+                             g->shiny ? " SHINY" : "",
+                             ui_nature_name(g->nature),
+                             ui_ability_name(g->ability));
                 } else {
-                    snprintf(action_detail, sizeof(action_detail),
-                             "GAME %u/%u is empty.", game_box + 1, game_selected + 1);
+                    snprintf(action_detail, sizeof(action_detail), "Selected game slot is empty.");
                 }
+            } else if (bank_read_box(bank_box, s_bank_view) &&
+                       s_bank_view[bank_selected].occupied) {
+                BankSlot *b = &s_bank_view[bank_selected];
+                snprintf(action_detail, sizeof(action_detail),
+                         "Bank slot: %s%s",
+                         ui_species_name(b->species),
+                         (b->flags & BANK_FLAG_SHINY) ? " SHINY" : "");
             } else {
-                if (bank_ok && bank_read_box(bank_box, s_bank_view) &&
-                    s_bank_view[bank_selected].occupied) {
-                    BankSlot *b = &s_bank_view[bank_selected];
-                    snprintf(action_detail, sizeof(action_detail),
-                             "BANK %u/%u Gen %u species %u%s",
-                             bank_box + 1, bank_selected + 1,
-                             b->generation, b->species,
-                             (b->flags & BANK_FLAG_SHINY) ? " SHINY" : "");
-                } else {
-                    snprintf(action_detail, sizeof(action_detail),
-                             "BANK %u/%u is empty.", bank_box + 1, bank_selected + 1);
-                }
+                snprintf(action_detail, sizeof(action_detail), "Selected Bank slot is empty.");
             }
-            redraw = true;
         }
 
         if (down & KEY_X) {
@@ -554,7 +605,7 @@ int main(int argc, char **argv) {
                 snprintf(action_detail, sizeof(action_detail), "Bank is not writable.");
                 overwrite_armed = false;
             } else if (!source.found || !game_box_ok) {
-                snprintf(action_detail, sizeof(action_detail), "No readable ORAS source.");
+                snprintf(action_detail, sizeof(action_detail), "No readable game save.");
                 overwrite_armed = false;
             } else if (game_focus) {
                 const OrasSlotInfo *g = &s_game_slots[game_selected];
@@ -571,7 +622,7 @@ int main(int argc, char **argv) {
                     if (dest_occupied && !overwrite_armed) {
                         overwrite_armed = true;
                         snprintf(action_detail, sizeof(action_detail),
-                                 "BANK occupied. X again to overwrite.");
+                                 "Bank destination occupied.");
                     } else {
                         if (bank_write_pk6(bank_box, bank_selected, &source, g,
                                            action_detail, sizeof(action_detail))) {
@@ -599,7 +650,7 @@ int main(int argc, char **argv) {
                     } else if (s_game_slots[game_selected].occupied && !overwrite_armed) {
                         overwrite_armed = true;
                         snprintf(action_detail, sizeof(action_detail),
-                                 "GAME slot occupied. X again to overwrite.");
+                                 "Game destination occupied.");
                     } else {
                         if (oras_write_slot_with_backup(&source, game_box, game_selected,
                                                         b->payload,
@@ -612,23 +663,23 @@ int main(int argc, char **argv) {
                     }
                 }
             }
-            redraw = true;
         }
 
-        if (redraw) {
-            draw_ui(&top, &bottom, bank_ok, bank_detail,
-                    bank_box, bank_selected, game_focus,
-                    &source, game_box_ok, s_game_slots,
-                    game_box, game_selected,
-                    game_detail, action_detail, overwrite_armed);
-        }
+        rebuild_ui_views(bank_ok, bank_box, game_box_ok, game_focus,
+                         bank_selected, game_selected);
 
-        gfxFlushBuffers();
-        gfxSwapBuffers();
-        gspWaitForVBlank();
+        ui_render_bank(oras_game_name(source.game),
+                       oras_media_name(source.media),
+                       bank_box, game_box,
+                       bank_selected, game_selected,
+                       game_focus,
+                       s_bank_ui, s_game_ui,
+                       &s_detail_ui,
+                       action_detail,
+                       overwrite_armed);
     }
 
     oras_services_exit();
-    gfxExit();
+    ui_exit();
     return 0;
 }
