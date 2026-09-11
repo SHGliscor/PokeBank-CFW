@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-TOOLS_DIR="${DEVKITPRO:-/opt/devkitpro}/tools/bin"
+if [[ -n "${CIA_TOOLS_DIR:-}" ]]; then
+  TOOLS_DIR="${CIA_TOOLS_DIR}"
+elif [[ -n "${DEVKITPRO:-}" ]]; then
+  TOOLS_DIR="${DEVKITPRO}/tools/bin"
+else
+  TOOLS_DIR="${HOME}/.local/bin"
+fi
+
 mkdir -p "$TOOLS_DIR"
 
-# The bannertool release ZIP contains multiple platform binaries. Select the
-# 64-bit Linux build explicitly; ZIP extraction may not preserve executable bits.
-if ! command -v bannertool >/dev/null 2>&1 || ! bannertool --help >/dev/null 2>&1; then
+# bannertool v1.2.2 provides a Linux x86_64 binary that works in both the
+# devkitARM container and current GitHub-hosted Ubuntu runners.
+if ! PATH="$TOOLS_DIR:$PATH" command -v bannertool >/dev/null 2>&1 || ! "$TOOLS_DIR/bannertool" --help >/dev/null 2>&1; then
   echo "Installing bannertool v1.2.2 (linux-x86_64)..."
   rm -rf /tmp/bannertool /tmp/bannertool.zip
   wget -q "https://github.com/Epicpkmn11/bannertool/releases/download/v1.2.2/bannertool.zip" -O /tmp/bannertool.zip
@@ -17,7 +24,10 @@ if ! command -v bannertool >/dev/null 2>&1 || ! bannertool --help >/dev/null 2>&
   install -m 0755 "$BANNERTOOL_BIN" "$TOOLS_DIR/bannertool"
 fi
 
-if ! command -v makerom >/dev/null 2>&1 || ! makerom -h >/dev/null 2>&1; then
+# makerom v0.19.0's current Ubuntu binary needs GLIBC 2.38+. CIA packaging
+# therefore runs on the GitHub Ubuntu host, while ARM compilation stays in
+# devkitPro/devkitarm.
+if [[ ! -x "$TOOLS_DIR/makerom" ]] || ! "$TOOLS_DIR/makerom" -h >/dev/null 2>&1; then
   echo "Installing makerom v0.19.0 (linux-x86_64)..."
   rm -rf /tmp/makerom /tmp/makerom.zip
   wget -q "https://github.com/3DSGuy/Project_CTR/releases/download/makerom-v0.19.0/makerom-v0.19.0-ubuntu_x86_64.zip" -O /tmp/makerom.zip

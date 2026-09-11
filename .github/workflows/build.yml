@@ -16,16 +16,79 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Build ARM application
+        run: |
+          make clean
+          make -j2
+          test -f PokeBank-CFW.elf
+          test -f PokeBank-CFW.3dsx
+          test -f PokeBank-CFW.smdh
+          ls -lah PokeBank-CFW.elf PokeBank-CFW.3dsx PokeBank-CFW.smdh
+
+      - name: Upload ARM build
+        uses: actions/upload-artifact@v4
+        with:
+          name: PokeBank-CFW-arm
+          path: |
+            PokeBank-CFW.elf
+            PokeBank-CFW.3dsx
+            PokeBank-CFW.smdh
+          if-no-files-found: error
+
+  package-cia:
+    needs: build-3ds
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download ARM build
+        uses: actions/download-artifact@v4
+        with:
+          name: PokeBank-CFW-arm
+          path: build-out
+
       - name: Install CIA packaging tools
+        env:
+          CIA_TOOLS_DIR: ${{ runner.temp }}/3ds-tools
         run: |
           chmod +x scripts/install_cia_tools.sh
           ./scripts/install_cia_tools.sh
+          echo "${CIA_TOOLS_DIR}" >> "${GITHUB_PATH}"
 
-      - name: Build and package
+      - name: Package CIA
         run: |
-          export PATH="/opt/devkitpro/tools/bin:$PATH"
-          make clean
-          make package
+          mkdir -p build dist
+          bannertool makesmdh \
+            -s "PokeBank-CFW" \
+            -l "Local Gen 1-7 Pokemon storage" \
+            -p "SHGliscor" \
+            -i assets/icon.png \
+            -o build/icon.icn
+
+          bannertool makebanner \
+            -i assets/banner.png \
+            -a assets/banner.wav \
+            -o build/banner.bnr
+
+          makerom -f cia -target t -exefslogo \
+            -o PokeBank-CFW.cia \
+            -elf build-out/PokeBank-CFW.elf \
+            -rsf cia.rsf \
+            -icon build/icon.icn \
+            -banner build/banner.bnr \
+            -DAPP_TITLE="PokeBank-CFW" \
+            -DAPP_PRODUCT_CODE="CTR-H-PBCF" \
+            -DAPP_UNIQUE_ID="0xBCF01" \
+            -DAPP_VERSION_MAJOR="0"
+
+          cp build-out/PokeBank-CFW.3dsx dist/
+          cp build-out/PokeBank-CFW.smdh dist/
+          cp PokeBank-CFW.cia dist/
+          cp README-TESTING.txt dist/
+          sha256sum dist/PokeBank-CFW.3dsx dist/PokeBank-CFW.cia > dist/SHA256SUMS.txt
+
           test -f dist/PokeBank-CFW.3dsx
           test -f dist/PokeBank-CFW.smdh
           test -f dist/PokeBank-CFW.cia
