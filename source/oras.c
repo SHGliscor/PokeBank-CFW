@@ -15,6 +15,10 @@
 static bool s_am_ready = false;
 static const u16 s_main_path[] = {'/', 'm', 'a', 'i', 'n', 0};
 
+/* ORAS PC box scratch buffer: 30 * 232 = 6,960 bytes.
+ * Keep this off the thread stack for O3DS/N3DS reliability. */
+static u8 s_box_raw[ORAS_SLOTS_PER_BOX * PK6_BOX_LENGTH];
+
 static const u8 s_block_positions[24][4] = {
     {0,1,2,3}, {0,1,3,2}, {0,2,1,3}, {0,3,1,2},
     {0,2,3,1}, {0,3,2,1}, {1,0,2,3}, {1,0,3,2},
@@ -309,10 +313,10 @@ bool oras_read_box(const OrasSource *source, unsigned box,
     const u64 offset = ORAS_BOX_OFFSET +
         (u64)box * ORAS_SLOTS_PER_BOX * PK6_BOX_LENGTH;
     const u32 block_size = ORAS_SLOTS_PER_BOX * PK6_BOX_LENGTH;
-    u8 raw[ORAS_SLOTS_PER_BOX * PK6_BOX_LENGTH];
     u32 bytes_read = 0;
+    memset(s_box_raw, 0, sizeof(s_box_raw));
 
-    res = FSFILE_Read(file, &bytes_read, offset, raw, block_size);
+    res = FSFILE_Read(file, &bytes_read, offset, s_box_raw, block_size);
     close_main_save(archive, file);
 
     if (R_FAILED(res) || bytes_read != block_size) {
@@ -325,7 +329,7 @@ bool oras_read_box(const OrasSource *source, unsigned box,
 
     unsigned occupied = 0;
     for (unsigned slot = 0; slot < ORAS_SLOTS_PER_BOX; ++slot) {
-        decode_slot(raw + slot * PK6_BOX_LENGTH, &out[slot]);
+        decode_slot(s_box_raw + slot * PK6_BOX_LENGTH, &out[slot]);
         if (out[slot].occupied) occupied++;
     }
 
