@@ -13,6 +13,7 @@ BUILD       := build
 SOURCES     := source
 DATA        :=
 INCLUDES    := include
+ROMFS       := romfs
 
 APP_TITLE       := PokeBank-CFW
 APP_DESCRIPTION := Local Gen 1-7 Pokemon storage
@@ -30,7 +31,7 @@ CFLAGS   += $(INCLUDE) -D__3DS__
 CXXFLAGS := $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++17
 ASFLAGS  := -g $(ARCH)
 LDFLAGS  := -specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
-LIBS     := -lctru -lm
+LIBS     := -lcitro2d -lcitro3d -lctru -lm
 LIBDIRS  := $(CTRULIB)
 
 ifneq ($(BUILD),$(notdir $(CURDIR)))
@@ -63,6 +64,7 @@ export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 export APP_ICON := $(TOPDIR)/$(ICON)
 export _3DSXDEPS := $(OUTPUT).smdh
 export _3DSXFLAGS += --smdh=$(OUTPUT).smdh
+export _3DSXFLAGS += --romfs=$(CURDIR)/$(ROMFS)
 
 .PHONY: all clean cia package
 
