@@ -12,6 +12,8 @@ Hardware status:
 - Bank -> ORAS empty-slot copy: PASS
 - ORAS save checksum resigning + commit: PASS
 - In-game save/reboot persistence after withdrawal: PASS
+- Bank -> ORAS occupied-slot overwrite: PASS
+- ORAS storage adapter: COMPLETE / HARDWARE VERIFIED
 - Bank persistence after reboot: PASS
 - Original ORAS Pokemon remains untouched after deposit: PASS
 
@@ -44,4 +46,4 @@ Controls:
 - SELECT rescans ORAS
 - START exits
 
-ORAS write support is now hardware-verified for empty destination slots, including backup creation, save commit, checksum resigning, in-game save, and reboot persistence. Occupied-slot overwrite remains the next write-path test.
+ORAS storage support is fully hardware-verified, including empty-slot withdrawal, occupied-slot overwrite, backup creation, save commit, checksum resigning, in-game save, and reboot persistence.
