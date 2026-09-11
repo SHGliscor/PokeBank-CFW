@@ -44,5 +44,10 @@ bool oras_read_box(const OrasSource *source, unsigned box,
                    OrasSlotInfo out[ORAS_SLOTS_PER_BOX],
                    char *detail, size_t detail_size);
 
+bool oras_write_slot_with_backup(const OrasSource *source,
+                                 unsigned box, unsigned slot,
+                                 const u8 raw[PK6_BOX_LENGTH],
+                                 char *detail, size_t detail_size);
+
 const char *oras_game_name(OrasGame game);
 const char *oras_media_name(FS_MediaType media);

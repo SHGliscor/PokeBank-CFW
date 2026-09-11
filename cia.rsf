@@ -27,6 +27,8 @@ AccessControlInfo:
    - Debug
    - DirectSdmc
    - DirectSdmcWrite
+   - ExportImportIvs
+   - SaveDataMove
 
   MemoryType              : Application
   SystemMode              : 64MB

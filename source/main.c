@@ -8,9 +8,12 @@
 
 #include "oras.h"
 
-#define APP_VERSION "0.3-alpha"
+#define APP_VERSION "0.4-alpha"
 #define APP_DIR "sdmc:/3ds/PokeBank-CFW"
 #define BANK_FILE APP_DIR "/bank.dat"
+#define BACKUP_DIR APP_DIR "/backups"
+#define BANK_BACKUP_LATEST BACKUP_DIR "/bank-latest.bak"
+#define BANK_BACKUP_PREVIOUS BACKUP_DIR "/bank-previous.bak"
 #define BANK_MAGIC 0x46434250u
 #define BANK_VERSION 1u
 #define BANK_BOXES 100u
@@ -53,6 +56,7 @@ _Static_assert(sizeof(BankSlot) == SLOT_SIZE, "BankSlot must be 512 bytes");
  */
 static BankSlot s_bank_view[SLOTS_PER_BOX];
 static OrasSlotInfo s_game_slots[ORAS_SLOTS_PER_BOX];
+static uint8_t s_file_copy_buffer[4096];
 
 static bool ensure_dir(const char *path) {
     if (mkdir(path, 0777) == 0) return true;
@@ -167,6 +171,64 @@ static uint32_t payload_checksum(const uint8_t *data, size_t size) {
     return hash;
 }
 
+
+static bool copy_regular_file(const char *src, const char *dst) {
+    FILE *in = fopen(src, "rb");
+    if (!in) return false;
+    FILE *out = fopen(dst, "wb");
+    if (!out) {
+        fclose(in);
+        return false;
+    }
+
+    bool ok = true;
+    size_t got;
+    while ((got = fread(s_file_copy_buffer, 1, sizeof(s_file_copy_buffer), in)) > 0) {
+        if (fwrite(s_file_copy_buffer, 1, got, out) != got) {
+            ok = false;
+            break;
+        }
+    }
+    if (ferror(in)) ok = false;
+    fflush(out);
+    fclose(out);
+    fclose(in);
+    if (!ok) remove(dst);
+    return ok;
+}
+
+static bool bank_backup_before_write(char *detail, size_t detail_size) {
+    if (!ensure_dir(BACKUP_DIR)) {
+        snprintf(detail, detail_size, "Bank backup dir failed (%d)", errno);
+        return false;
+    }
+
+    remove(BANK_BACKUP_PREVIOUS);
+    if (rename(BANK_BACKUP_LATEST, BANK_BACKUP_PREVIOUS) != 0 &&
+        errno != ENOENT) {
+        snprintf(detail, detail_size, "Bank backup rotate failed (%d)", errno);
+        return false;
+    }
+
+    if (!copy_regular_file(BANK_FILE, BANK_BACKUP_LATEST)) {
+        snprintf(detail, detail_size, "Bank backup failed");
+        return false;
+    }
+    return true;
+}
+
+static bool bank_read_slot(unsigned box, unsigned slot, BankSlot *out) {
+    if (!out || box >= BANK_BOXES || slot >= SLOTS_PER_BOX) return false;
+    FILE *f = fopen(BANK_FILE, "rb");
+    if (!f) return false;
+    const long offset = (long)sizeof(BankHeader) +
+        (long)((box * SLOTS_PER_BOX + slot) * SLOT_SIZE);
+    bool ok = fseek(f, offset, SEEK_SET) == 0 &&
+              fread(out, 1, sizeof(*out), f) == sizeof(*out);
+    fclose(f);
+    return ok;
+}
+
 static bool bank_write_pk6(unsigned box, unsigned slot,
                            const OrasSource *source,
                            const OrasSlotInfo *pk,
@@ -189,6 +251,10 @@ static bool bank_write_pk6(unsigned box, unsigned slot,
     memcpy(record.payload, pk->raw, PK6_BOX_LENGTH);
     record.checksum = payload_checksum(record.payload, record.payload_size);
 
+    if (!bank_backup_before_write(detail, detail_size)) {
+        return false;
+    }
+
     FILE *f = fopen(BANK_FILE, "r+b");
     if (!f) {
         snprintf(detail, detail_size, "Bank open failed (%d)", errno);
@@ -207,8 +273,15 @@ static bool bank_write_pk6(unsigned box, unsigned slot,
         return false;
     }
 
-    snprintf(detail, detail_size, "Copied species %u to Bank %u/%u",
-             pk->species, box + 1, slot + 1);
+    BankSlot verify;
+    if (!bank_read_slot(box, slot, &verify) ||
+        memcmp(&verify, &record, sizeof(record)) != 0) {
+        snprintf(detail, detail_size, "Bank write verify failed");
+        return false;
+    }
+
+    snprintf(detail, detail_size, "GAME->BANK species %u copied + backup",
+             pk->species);
     return true;
 }
 
@@ -315,7 +388,7 @@ static void draw_ui(PrintConsole *top, PrintConsole *bottom,
     }
 
     printf("\nY Focus L/R Box D-Pad Slot\n");
-    printf("A Inspect X Copy GAME->BANK\n");
+    printf("A Inspect X Copy focused side\n");
     printf("B Refresh SELECT Detect START Exit\n");
 }
 
@@ -331,7 +404,7 @@ int main(int argc, char **argv) {
 
     char bank_detail[96];
     char game_detail[128];
-    char action_detail[128] = "ORAS is read-only; only Bank is written.";
+    char action_detail[128] = "ORAS deposit path passed; write test armed.";
 
     bool bank_ok = bank_validate(bank_detail, sizeof(bank_detail));
 
@@ -460,8 +533,7 @@ int main(int argc, char **argv) {
                              "GAME %u/%u is empty.", game_box + 1, game_selected + 1);
                 }
             } else {
-                BankSlot bank_slots[SLOTS_PER_BOX];
-                if (bank_ok && bank_read_box(bank_box, bank_slots) &&
+                if (bank_ok && bank_read_box(bank_box, s_bank_view) &&
                     s_bank_view[bank_selected].occupied) {
                     BankSlot *b = &s_bank_view[bank_selected];
                     snprintf(action_detail, sizeof(action_detail),
@@ -484,7 +556,7 @@ int main(int argc, char **argv) {
             } else if (!source.found || !game_box_ok) {
                 snprintf(action_detail, sizeof(action_detail), "No readable ORAS source.");
                 overwrite_armed = false;
-            } else {
+            } else if (game_focus) {
                 const OrasSlotInfo *g = &s_game_slots[game_selected];
                 if (!g->occupied) {
                     snprintf(action_detail, sizeof(action_detail), "Selected GAME slot is empty.");
@@ -494,17 +566,47 @@ int main(int argc, char **argv) {
                              "Refusing copy: PK6 checksum is invalid.");
                     overwrite_armed = false;
                 } else {
-                    BankSlot bank_slots[SLOTS_PER_BOX];
-                    bool dest_occupied = bank_read_box(bank_box, bank_slots) &&
+                    bool dest_occupied = bank_read_box(bank_box, s_bank_view) &&
                                          s_bank_view[bank_selected].occupied;
                     if (dest_occupied && !overwrite_armed) {
                         overwrite_armed = true;
                         snprintf(action_detail, sizeof(action_detail),
-                                 "Destination occupied. X again to overwrite.");
+                                 "BANK occupied. X again to overwrite.");
                     } else {
                         if (bank_write_pk6(bank_box, bank_selected, &source, g,
                                            action_detail, sizeof(action_detail))) {
                             bank_ok = bank_validate(bank_detail, sizeof(bank_detail));
+                        }
+                        overwrite_armed = false;
+                    }
+                }
+            } else {
+                if (!bank_read_box(bank_box, s_bank_view) ||
+                    !s_bank_view[bank_selected].occupied) {
+                    snprintf(action_detail, sizeof(action_detail), "Selected BANK slot is empty.");
+                    overwrite_armed = false;
+                } else {
+                    BankSlot *b = &s_bank_view[bank_selected];
+                    bool bank_payload_ok =
+                        b->generation == 6 &&
+                        b->payload_size == PK6_BOX_LENGTH &&
+                        b->checksum == payload_checksum(b->payload, b->payload_size);
+
+                    if (!bank_payload_ok) {
+                        snprintf(action_detail, sizeof(action_detail),
+                                 "Refusing withdrawal: Bank PK6 invalid.");
+                        overwrite_armed = false;
+                    } else if (s_game_slots[game_selected].occupied && !overwrite_armed) {
+                        overwrite_armed = true;
+                        snprintf(action_detail, sizeof(action_detail),
+                                 "GAME slot occupied. X again to overwrite.");
+                    } else {
+                        if (oras_write_slot_with_backup(&source, game_box, game_selected,
+                                                        b->payload,
+                                                        action_detail,
+                                                        sizeof(action_detail))) {
+                            game_box_ok = oras_read_box(&source, game_box, s_game_slots,
+                                                        game_detail, sizeof(game_detail));
                         }
                         overwrite_armed = false;
                     }

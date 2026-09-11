@@ -3,12 +3,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+#include <sys/stat.h>
 
 #define OR_TITLE_ID 0x000400000011C400ULL
 #define AS_TITLE_ID 0x000400000011C500ULL
 #define ORAS_SAVE_SIZE 0x76000ULL
 #define ORAS_BOX_OFFSET 0x33000ULL
 #define ORAS_LAST_VIEWED_BOX_OFFSET 0x483FULL
+#define ORAS_BOX_DATA_LENGTH 0x34AD0ULL
+#define ORAS_CHECKSUM_TABLE_OFFSET 0x75E1AULL
+#define ORAS_BOX_CHECKSUM_INDEX 56u
+#define PBCF_DIR "sdmc:/3ds/PokeBank-CFW"
+#define PBCF_BACKUP_DIR PBCF_DIR "/backups"
 #define PK6_BLOCK_LENGTH 56u
 #define PK6_ENCRYPTION_START 8u
 
@@ -18,6 +25,7 @@ static const u16 s_main_path[] = {'/', 'm', 'a', 'i', 'n', 0};
 /* ORAS PC box scratch buffer: 30 * 232 = 6,960 bytes.
  * Keep this off the thread stack for O3DS/N3DS reliability. */
 static u8 s_box_raw[ORAS_SLOTS_PER_BOX * PK6_BOX_LENGTH];
+static u8 s_io_buffer[4096];
 
 static const u8 s_block_positions[24][4] = {
     {0,1,2,3}, {0,1,3,2}, {0,2,1,3}, {0,3,1,2},
@@ -108,10 +116,11 @@ static bool find_title_on_media(FS_MediaType media, u64 *out_id)
     return found;
 }
 
-static Result open_main_save(const OrasSource *source,
-                             FS_Archive *archive,
-                             Handle *file,
-                             u64 *size)
+static Result open_main_save_flags(const OrasSource *source,
+                                   FS_Archive *archive,
+                                   Handle *file,
+                                   u64 *size,
+                                   u32 flags)
 {
     if (!source || !source->found) return (Result)-1;
 
@@ -127,7 +136,7 @@ static Result open_main_save(const OrasSource *source,
 
     res = FSUSER_OpenFile(file, *archive,
                           fsMakePath(PATH_UTF16, s_main_path),
-                          FS_OPEN_READ, 0);
+                          flags, 0);
     if (R_FAILED(res)) {
         FSUSER_CloseArchive(*archive);
         *archive = 0;
@@ -143,6 +152,14 @@ static Result open_main_save(const OrasSource *source,
     }
 
     return res;
+}
+
+static Result open_main_save(const OrasSource *source,
+                             FS_Archive *archive,
+                             Handle *file,
+                             u64 *size)
+{
+    return open_main_save_flags(source, archive, file, size, FS_OPEN_READ);
 }
 
 static void close_main_save(FS_Archive archive, Handle file)
@@ -335,5 +352,229 @@ bool oras_read_box(const OrasSource *source, unsigned box,
 
     snprintf(detail, detail_size, "%s box %u: %u Pokemon",
              oras_game_name(source->game), box + 1, occupied);
+    return true;
+}
+
+
+static bool ensure_backup_dir(void)
+{
+    if (mkdir("sdmc:/3ds", 0777) != 0 && errno != EEXIST) return false;
+    if (mkdir(PBCF_DIR, 0777) != 0 && errno != EEXIST) return false;
+    if (mkdir(PBCF_BACKUP_DIR, 0777) != 0 && errno != EEXIST) return false;
+    return true;
+}
+
+static bool backup_oras_main(const OrasSource *source, char *detail, size_t detail_size)
+{
+    if (!ensure_backup_dir()) {
+        snprintf(detail, detail_size, "Backup dir failed (%d)", errno);
+        return false;
+    }
+
+    const char *tag = source->game == ORAS_GAME_OMEGA_RUBY ? "OR" : "AS";
+    char latest[128];
+    char previous[128];
+    snprintf(latest, sizeof(latest), "%s/%s-main-latest.bak", PBCF_BACKUP_DIR, tag);
+    snprintf(previous, sizeof(previous), "%s/%s-main-previous.bak", PBCF_BACKUP_DIR, tag);
+
+    remove(previous);
+    if (rename(latest, previous) != 0 && errno != ENOENT) {
+        snprintf(detail, detail_size, "Backup rotate failed (%d)", errno);
+        return false;
+    }
+
+    FS_Archive archive = 0;
+    Handle file = 0;
+    u64 size = 0;
+    Result res = open_main_save(source, &archive, &file, &size);
+    if (R_FAILED(res)) {
+        snprintf(detail, detail_size, "Backup source open %08lX",
+                 (unsigned long)(u32)res);
+        return false;
+    }
+
+    FILE *out = fopen(latest, "wb");
+    if (!out) {
+        close_main_save(archive, file);
+        snprintf(detail, detail_size, "Backup file open failed (%d)", errno);
+        return false;
+    }
+
+    bool ok = true;
+    u64 offset = 0;
+    while (offset < size) {
+        u32 want = (u32)((size - offset) > sizeof(s_io_buffer)
+                         ? sizeof(s_io_buffer) : (size - offset));
+        u32 got = 0;
+        res = FSFILE_Read(file, &got, offset, s_io_buffer, want);
+        if (R_FAILED(res) || got != want) {
+            ok = false;
+            break;
+        }
+        if (fwrite(s_io_buffer, 1, got, out) != got) {
+            ok = false;
+            break;
+        }
+        offset += got;
+    }
+
+    fflush(out);
+    fclose(out);
+    close_main_save(archive, file);
+
+    if (!ok) {
+        remove(latest);
+        snprintf(detail, detail_size, "ORAS backup copy failed");
+        return false;
+    }
+
+    return true;
+}
+
+static u16 ccitt16_update(u16 crc, const u8 *data, size_t size)
+{
+    for (size_t i = 0; i < size; ++i) {
+        crc ^= (u16)data[i] << 8;
+        for (unsigned bit = 0; bit < 8; ++bit) {
+            crc = (crc & 0x8000u) ? (u16)((crc << 1) ^ 0x1021u)
+                                  : (u16)(crc << 1);
+        }
+    }
+    return crc;
+}
+
+static bool read_box_crc(Handle file, u16 *out_crc)
+{
+    u16 crc = 0xFFFFu;
+    u64 done = 0;
+
+    while (done < ORAS_BOX_DATA_LENGTH) {
+        u32 want = (u32)((ORAS_BOX_DATA_LENGTH - done) > sizeof(s_io_buffer)
+                         ? sizeof(s_io_buffer) : (ORAS_BOX_DATA_LENGTH - done));
+        u32 got = 0;
+        Result res = FSFILE_Read(file, &got, ORAS_BOX_OFFSET + done,
+                                 s_io_buffer, want);
+        if (R_FAILED(res) || got != want) return false;
+        crc = ccitt16_update(crc, s_io_buffer, got);
+        done += got;
+    }
+
+    *out_crc = crc;
+    return true;
+}
+
+bool oras_write_slot_with_backup(const OrasSource *source,
+                                 unsigned box, unsigned slot,
+                                 const u8 raw[PK6_BOX_LENGTH],
+                                 char *detail, size_t detail_size)
+{
+    if (!source || !source->found || !raw ||
+        box >= ORAS_BOX_COUNT || slot >= ORAS_SLOTS_PER_BOX) {
+        snprintf(detail, detail_size, "Invalid ORAS write request");
+        return false;
+    }
+
+    OrasSlotInfo candidate;
+    decode_slot(raw, &candidate);
+    if (!candidate.occupied || !candidate.checksum_valid) {
+        snprintf(detail, detail_size, "Refusing invalid PK6");
+        return false;
+    }
+
+    if (!backup_oras_main(source, detail, detail_size)) {
+        return false;
+    }
+
+    FS_Archive archive = 0;
+    Handle file = 0;
+    u64 size = 0;
+    Result res = open_main_save_flags(source, &archive, &file, &size,
+                                      FS_OPEN_READ | FS_OPEN_WRITE);
+    if (R_FAILED(res)) {
+        snprintf(detail, detail_size, "Save RW open failed: %08lX",
+                 (unsigned long)(u32)res);
+        return false;
+    }
+
+    const u64 slot_offset = ORAS_BOX_OFFSET +
+        ((u64)box * ORAS_SLOTS_PER_BOX + slot) * PK6_BOX_LENGTH;
+
+    u32 written = 0;
+    res = FSFILE_Write(file, &written, slot_offset, raw, PK6_BOX_LENGTH,
+                       FS_WRITE_FLUSH);
+    if (R_FAILED(res) || written != PK6_BOX_LENGTH) {
+        close_main_save(archive, file);
+        snprintf(detail, detail_size, "PK6 write failed: %08lX",
+                 (unsigned long)(u32)res);
+        return false;
+    }
+
+    u16 crc = 0;
+    if (!read_box_crc(file, &crc)) {
+        close_main_save(archive, file);
+        snprintf(detail, detail_size, "Box checksum read failed");
+        return false;
+    }
+
+    u8 crc_bytes[2] = {(u8)(crc & 0xFFu), (u8)(crc >> 8)};
+    const u64 checksum_offset =
+        ORAS_CHECKSUM_TABLE_OFFSET + (u64)ORAS_BOX_CHECKSUM_INDEX * 8u;
+
+    written = 0;
+    res = FSFILE_Write(file, &written, checksum_offset,
+                       crc_bytes, sizeof(crc_bytes), FS_WRITE_FLUSH);
+    if (R_FAILED(res) || written != sizeof(crc_bytes)) {
+        close_main_save(archive, file);
+        snprintf(detail, detail_size, "Checksum write failed: %08lX",
+                 (unsigned long)(u32)res);
+        return false;
+    }
+
+    res = FSUSER_ControlArchive(archive, ARCHIVE_ACTION_COMMIT_SAVE_DATA,
+                                NULL, 0, NULL, 0);
+    close_main_save(archive, file);
+    if (R_FAILED(res)) {
+        snprintf(detail, detail_size, "Save commit failed: %08lX",
+                 (unsigned long)(u32)res);
+        return false;
+    }
+
+    FS_Archive verify_archive = 0;
+    Handle verify_file = 0;
+    u64 verify_size = 0;
+    res = open_main_save(source, &verify_archive, &verify_file, &verify_size);
+    if (R_FAILED(res)) {
+        snprintf(detail, detail_size, "Verify reopen failed: %08lX",
+                 (unsigned long)(u32)res);
+        return false;
+    }
+
+    u8 verify_raw[PK6_BOX_LENGTH];
+    u32 got = 0;
+    res = FSFILE_Read(verify_file, &got, slot_offset,
+                      verify_raw, sizeof(verify_raw));
+    bool raw_ok = R_SUCCEEDED(res) && got == sizeof(verify_raw) &&
+                  memcmp(verify_raw, raw, sizeof(verify_raw)) == 0;
+
+    u16 verify_crc = 0;
+    bool crc_ok = read_box_crc(verify_file, &verify_crc);
+    u8 stored_crc[2] = {0, 0};
+    got = 0;
+    res = FSFILE_Read(verify_file, &got, checksum_offset,
+                      stored_crc, sizeof(stored_crc));
+    crc_ok = crc_ok && R_SUCCEEDED(res) && got == sizeof(stored_crc) &&
+             read_le16(stored_crc) == verify_crc;
+
+    close_main_save(verify_archive, verify_file);
+
+    if (!raw_ok || !crc_ok) {
+        snprintf(detail, detail_size,
+                 "WRITE VERIFY FAILED - backup kept");
+        return false;
+    }
+
+    snprintf(detail, detail_size,
+             "Bank->ORAS copied species %u; backup saved",
+             candidate.species);
     return true;
 }
