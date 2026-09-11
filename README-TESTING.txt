@@ -34,7 +34,7 @@ or
 
 OVERWRITE TEST
 --------------
-Do not test occupied-slot overwrite until the empty-slot write above passes.
+PASS on real hardware. Occupied ORAS PC-slot overwrite is now hardware-verified.
 
 REPORT
 ------
@@ -43,3 +43,14 @@ REPORT
 - whether Pokemon persisted after an in-game save/reboot
 - whether the Bank copy remained
 - any error code shown by PokeBank-CFW
+
+ORAS FINAL STATUS
+-----------------
+ORAS reader/writer round trip: PASS
+Empty-slot withdrawal: PASS
+Occupied-slot overwrite: PASS
+Automatic backup: PASS
+Checksum resign + archive commit: PASS
+Persistence after in-game save/reboot: PASS
+
+Next adapter: Pokemon X/Y.
