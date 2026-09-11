@@ -107,10 +107,6 @@ else
 
 DEPENDS := $(OFILES:.o=.d)
 
-$(OUTPUT).smdh:
-	@command -v bannertool >/dev/null || (echo "ERROR: bannertool not found" && exit 1)
-	@bannertool makesmdh -s "$(APP_TITLE)" -l "$(APP_DESCRIPTION)" -p "$(APP_AUTHOR)" -i "$(TOPDIR)/$(ICON)" -o "$@"
-
 $(OUTPUT).3dsx: $(OUTPUT).elf $(_3DSXDEPS)
 $(OFILES_SOURCES): $(HFILES)
 $(OUTPUT).elf: $(OFILES)

@@ -16,16 +16,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install bannertool for SMDH
-        run: |
-          rm -rf /tmp/bannertool /tmp/bannertool.zip
-          wget -q "https://github.com/Epicpkmn11/bannertool/releases/download/v1.2.2/bannertool.zip" -O /tmp/bannertool.zip
-          mkdir -p /tmp/bannertool
-          unzip -q /tmp/bannertool.zip -d /tmp/bannertool
-          install -m 0755 /tmp/bannertool/linux-x86_64/bannertool /opt/devkitpro/tools/bin/bannertool
-          test -x /opt/devkitpro/tools/bin/bannertool
-          command -v bannertool
-
       - name: Build ARM application
         run: |
           make clean
