@@ -288,6 +288,8 @@ static void draw_detail(const UiPokemon *p)
     if (p->shiny) {
         draw_shiny(356, 67, 1.15f);
         text_at("SHINY", 340, 101, 0.36f, COL_SHINY);
+    } else {
+        text_at("NORMAL", 336, 101, 0.34f, COL_MUTED);
     }
     draw_gender(p->gender, 263, 101);
 
@@ -312,7 +314,10 @@ static void draw_detail(const UiPokemon *p)
 
     snprintf(line, sizeof(line), "OT %s  %u/%u",
              p->ot_name[0] ? p->ot_name : "-", p->tid, p->sid);
-    text_at(line, 259, 204, 0.33f, COL_MUTED);
+    text_at(line, 259, 204, 0.31f, COL_MUTED);
+
+    snprintf(line, sizeof(line), "PID %08lX", (unsigned long)p->pid);
+    text_at(line, 259, 218, 0.29f, COL_MUTED);
 }
 
 void ui_render_bank(const char *game_name, const char *media_name,
