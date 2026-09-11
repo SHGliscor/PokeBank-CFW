@@ -45,6 +45,15 @@ typedef struct {
 _Static_assert(sizeof(BankHeader) == 64, "BankHeader must be 64 bytes");
 _Static_assert(sizeof(BankSlot) == SLOT_SIZE, "BankSlot must be 512 bytes");
 
+/*
+ * Keep the large box buffers out of the ARM11 thread stack.
+ * A Bank box alone is 30 * 512 = 15 KiB, and the ORAS view adds
+ * another ~7 KiB. Stacking both at once can cross the process stack
+ * guard on real hardware even though the code compiles cleanly.
+ */
+static BankSlot s_bank_view[SLOTS_PER_BOX];
+static OrasSlotInfo s_game_slots[ORAS_SLOTS_PER_BOX];
+
 static bool ensure_dir(const char *path) {
     if (mkdir(path, 0777) == 0) return true;
     return errno == EEXIST;
@@ -243,13 +252,12 @@ static void draw_ui(PrintConsole *top, PrintConsole *bottom,
                     unsigned bank_box, unsigned bank_selected,
                     bool game_focus,
                     const OrasSource *source, bool game_box_ok,
-                    const OrasSlotInfo game_slots[ORAS_SLOTS_PER_BOX],
+                    const OrasSlotInfo s_game_slots[ORAS_SLOTS_PER_BOX],
                     unsigned game_box, unsigned game_selected,
                     const char *game_detail, const char *action_detail,
                     bool overwrite_armed) {
-    BankSlot bank_slots[SLOTS_PER_BOX];
-    memset(bank_slots, 0, sizeof(bank_slots));
-    if (bank_ok) bank_read_box(bank_box, bank_slots);
+    memset(s_bank_view, 0, sizeof(s_bank_view));
+    if (bank_ok) bank_read_box(bank_box, s_bank_view);
 
     consoleSelect(top);
     consoleClear();
@@ -259,7 +267,7 @@ static void draw_ui(PrintConsole *top, PrintConsole *bottom,
     printf("%s\n\n", bank_ok ? bank_detail : "BANK ERROR");
     draw_grid_bank(bank_slots, bank_selected, !game_focus);
 
-    const BankSlot *b = &bank_slots[bank_selected];
+    const BankSlot *b = &s_bank_view[bank_selected];
     printf("\nBank slot %u: ", bank_selected + 1);
     if (!b->occupied) {
         printf("empty\n");
@@ -286,8 +294,8 @@ static void draw_ui(PrintConsole *top, PrintConsole *bottom,
         printf("%s\n\n", game_detail);
 
         if (game_box_ok) {
-            draw_grid_game(game_slots, game_selected, game_focus);
-            const OrasSlotInfo *g = &game_slots[game_selected];
+            draw_grid_game(s_game_slots, game_selected, game_focus);
+            const OrasSlotInfo *g = &s_game_slots[game_selected];
             printf("\nGame slot %u: ", game_selected + 1);
             if (!g->occupied) {
                 printf("empty\n");
@@ -337,8 +345,7 @@ int main(int argc, char **argv) {
 
     OrasSource source;
     memset(&source, 0, sizeof(source));
-    OrasSlotInfo game_slots[ORAS_SLOTS_PER_BOX];
-    memset(game_slots, 0, sizeof(game_slots));
+    memset(s_game_slots, 0, sizeof(s_game_slots));
 
     unsigned bank_box = 0, bank_selected = 0;
     unsigned game_box = 0, game_selected = 0;
@@ -347,14 +354,14 @@ int main(int argc, char **argv) {
     if (R_SUCCEEDED(am_res) &&
         oras_detect(&source, game_detail, sizeof(game_detail))) {
         game_box = source.current_box;
-        game_box_ok = oras_read_box(&source, game_box, game_slots,
+        game_box_ok = oras_read_box(&source, game_box, s_game_slots,
                                     game_detail, sizeof(game_detail));
         game_focus = game_box_ok;
     }
 
     draw_ui(&top, &bottom, bank_ok, bank_detail,
             bank_box, bank_selected, game_focus,
-            &source, game_box_ok, game_slots,
+            &source, game_box_ok, s_game_slots,
             game_box, game_selected,
             game_detail, action_detail, overwrite_armed);
 
@@ -385,7 +392,7 @@ int main(int argc, char **argv) {
         if (down & KEY_L) {
             if (game_focus && source.found) {
                 game_box = (game_box + ORAS_BOX_COUNT - 1) % ORAS_BOX_COUNT;
-                game_box_ok = oras_read_box(&source, game_box, game_slots,
+                game_box_ok = oras_read_box(&source, game_box, s_game_slots,
                                             game_detail, sizeof(game_detail));
             } else {
                 bank_box = (bank_box + BANK_BOXES - 1) % BANK_BOXES;
@@ -397,7 +404,7 @@ int main(int argc, char **argv) {
         if (down & KEY_R) {
             if (game_focus && source.found) {
                 game_box = (game_box + 1) % ORAS_BOX_COUNT;
-                game_box_ok = oras_read_box(&source, game_box, game_slots,
+                game_box_ok = oras_read_box(&source, game_box, s_game_slots,
                                             game_detail, sizeof(game_detail));
             } else {
                 bank_box = (bank_box + 1) % BANK_BOXES;
@@ -408,12 +415,12 @@ int main(int argc, char **argv) {
 
         if (down & KEY_SELECT) {
             memset(&source, 0, sizeof(source));
-            memset(game_slots, 0, sizeof(game_slots));
+            memset(s_game_slots, 0, sizeof(s_game_slots));
             game_box_ok = false;
             if (oras_detect(&source, game_detail, sizeof(game_detail))) {
                 game_box = source.current_box;
                 game_selected = 0;
-                game_box_ok = oras_read_box(&source, game_box, game_slots,
+                game_box_ok = oras_read_box(&source, game_box, s_game_slots,
                                             game_detail, sizeof(game_detail));
                 game_focus = game_box_ok;
                 snprintf(action_detail, sizeof(action_detail),
@@ -428,7 +435,7 @@ int main(int argc, char **argv) {
 
         if (down & KEY_B) {
             if (source.found) {
-                game_box_ok = oras_read_box(&source, game_box, game_slots,
+                game_box_ok = oras_read_box(&source, game_box, s_game_slots,
                                             game_detail, sizeof(game_detail));
                 snprintf(action_detail, sizeof(action_detail),
                          "%s", game_box_ok ? "Game box refreshed." : "Game refresh failed.");
@@ -442,7 +449,7 @@ int main(int argc, char **argv) {
 
         if (down & KEY_A) {
             if (game_focus && source.found && game_box_ok) {
-                const OrasSlotInfo *g = &game_slots[game_selected];
+                const OrasSlotInfo *g = &s_game_slots[game_selected];
                 if (g->occupied) {
                     snprintf(action_detail, sizeof(action_detail),
                              "GAME %u/%u species %u PID %08lX%s",
@@ -455,8 +462,8 @@ int main(int argc, char **argv) {
             } else {
                 BankSlot bank_slots[SLOTS_PER_BOX];
                 if (bank_ok && bank_read_box(bank_box, bank_slots) &&
-                    bank_slots[bank_selected].occupied) {
-                    BankSlot *b = &bank_slots[bank_selected];
+                    s_bank_view[bank_selected].occupied) {
+                    BankSlot *b = &s_bank_view[bank_selected];
                     snprintf(action_detail, sizeof(action_detail),
                              "BANK %u/%u Gen %u species %u%s",
                              bank_box + 1, bank_selected + 1,
@@ -478,7 +485,7 @@ int main(int argc, char **argv) {
                 snprintf(action_detail, sizeof(action_detail), "No readable ORAS source.");
                 overwrite_armed = false;
             } else {
-                const OrasSlotInfo *g = &game_slots[game_selected];
+                const OrasSlotInfo *g = &s_game_slots[game_selected];
                 if (!g->occupied) {
                     snprintf(action_detail, sizeof(action_detail), "Selected GAME slot is empty.");
                     overwrite_armed = false;
@@ -489,7 +496,7 @@ int main(int argc, char **argv) {
                 } else {
                     BankSlot bank_slots[SLOTS_PER_BOX];
                     bool dest_occupied = bank_read_box(bank_box, bank_slots) &&
-                                         bank_slots[bank_selected].occupied;
+                                         s_bank_view[bank_selected].occupied;
                     if (dest_occupied && !overwrite_armed) {
                         overwrite_armed = true;
                         snprintf(action_detail, sizeof(action_detail),
@@ -509,7 +516,7 @@ int main(int argc, char **argv) {
         if (redraw) {
             draw_ui(&top, &bottom, bank_ok, bank_detail,
                     bank_box, bank_selected, game_focus,
-                    &source, game_box_ok, game_slots,
+                    &source, game_box_ok, s_game_slots,
                     game_box, game_selected,
                     game_detail, action_detail, overwrite_armed);
         }
