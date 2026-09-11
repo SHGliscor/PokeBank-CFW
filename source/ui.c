@@ -22,19 +22,18 @@ static char *s_species[722];
 static char *s_natures[25];
 static char *s_abilities[256];
 
-static const u32 COL_BG_TOP      = C2D_Color32(17, 26, 43, 255);
-static const u32 COL_BG_BOTTOM   = C2D_Color32(23, 34, 52, 255);
-static const u32 COL_PANEL       = C2D_Color32(35, 49, 70, 255);
-static const u32 COL_PANEL_ALT   = C2D_Color32(43, 59, 82, 255);
-static const u32 COL_TEXT        = C2D_Color32(244, 247, 250, 255);
-static const u32 COL_MUTED       = C2D_Color32(169, 183, 199, 255);
-static const u32 COL_ACCENT      = C2D_Color32(63, 194, 218, 255);
-static const u32 COL_GAME        = C2D_Color32(246, 191, 66, 255);
-static const u32 COL_GREEN       = C2D_Color32(64, 186, 121, 255);
-static const u32 COL_ORANGE      = C2D_Color32(224, 142, 62, 255);
-static const u32 COL_RED         = C2D_Color32(208, 77, 82, 255);
-static const u32 COL_BLACK       = C2D_Color32(8, 12, 18, 255);
-static const u32 COL_SHINY       = C2D_Color32(251, 214, 72, 255);
+#define COL_BG_TOP      C2D_Color32(17, 26, 43, 255)
+#define COL_BG_BOTTOM   C2D_Color32(23, 34, 52, 255)
+#define COL_PANEL       C2D_Color32(35, 49, 70, 255)
+#define COL_PANEL_ALT   C2D_Color32(43, 59, 82, 255)
+#define COL_TEXT        C2D_Color32(244, 247, 250, 255)
+#define COL_MUTED       C2D_Color32(169, 183, 199, 255)
+#define COL_ACCENT      C2D_Color32(63, 194, 218, 255)
+#define COL_GAME        C2D_Color32(246, 191, 66, 255)
+#define COL_GREEN       C2D_Color32(64, 186, 121, 255)
+#define COL_ORANGE      C2D_Color32(224, 142, 62, 255)
+#define COL_RED         C2D_Color32(208, 77, 82, 255)
+#define COL_SHINY       C2D_Color32(251, 214, 72, 255)
 
 static unsigned load_lines(const char *path, char **buffer,
                            char **lines, unsigned max_lines)
