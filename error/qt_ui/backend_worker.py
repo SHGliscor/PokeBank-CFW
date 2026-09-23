@@ -893,7 +893,7 @@ class PartyRefreshWorker(QObject):
             if self._stop_requested.is_set():
                 return
             # Use the same bounded transport wrapper as hunt-side telemetry.
-            # D25 resolves the field runtime party and batches PK6 reads where
+            # D21 resolves the active PokePartySave runtime party and keeps
             # addresses are close; discovery is finite and backs off on a miss.
             bridge = CountingBridge(
                 host=self.host,
@@ -1105,9 +1105,14 @@ class ProbeWorker(QObject):
                         payload["trainer_ids"] = {"error": f"{type(id_exc).__name__}: {id_exc}"}
 
                     try:
-                        # D25: connection result and idle viewer share the same
-                        # live field runtime pointer-chain authority.
-                        live_party = get_runtime_party_snapshot(self.host, self.bridge_port, bridge)
+                        # D21: connection result and idle viewer share the same
+                        # active PokePartySave runtime authority.
+                        live_party = get_live_party_snapshot(
+                            self.host,
+                            self.bridge_port,
+                            bridge.game_info(),
+                            bridge,
+                        )
                         payload["party"] = list(live_party.get("payload") or [])
                         if live_party.get("diagnostic"):
                             payload["party_diagnostic"] = str(live_party.get("diagnostic"))
