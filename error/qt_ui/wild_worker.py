@@ -529,7 +529,10 @@ class WildHuntWorker(QObject):
         try:
             if self.method_key == "horde":
                 snap = get_live_party_snapshot(
-                    self.host, int(getattr(br, "port", 4952)), br
+                    self.host,
+                    int(getattr(br, "port", 4952)),
+                    br.game_info(),
+                    br
                 )
                 ordered = list(snap.get("ordered_parsed") or [])
                 if ordered and snap.get("reorder_proven"):
@@ -2124,7 +2127,10 @@ class WildHuntWorker(QObject):
         holder that also knows Surf/Fly/etc. is intentionally rejected here.
         """
         snap = get_live_party_snapshot(
-            self.host, int(getattr(br, "port", 4952)), br
+            self.host,
+                    int(getattr(br, "port", 4952)),
+                    br.game_info(),
+                    br
         )
         ordered = list(snap.get("ordered_parsed") or [])
         if not ordered:
@@ -2230,7 +2236,10 @@ class WildHuntWorker(QObject):
     def _prepare_horde_lead_for_honey(self, br):
         """Capture lead/move authority without requiring Sweet Scent."""
         snap = get_live_party_snapshot(
-            self.host, int(getattr(br, "port", 4952)), br
+            self.host,
+                    int(getattr(br, "port", 4952)),
+                    br.game_info(),
+                    br
         )
         ordered = list(snap.get("ordered_parsed") or [])
         if not ordered or not bool(snap.get("reorder_proven")):
@@ -3305,7 +3314,10 @@ class WildHuntWorker(QObject):
             live_lead = self.horde_lead_pk6
             try:
                 snap = get_live_party_snapshot(
-                    self.host, int(getattr(br, "port", 4952)), br
+                    self.host,
+                    int(getattr(br, "port", 4952)),
+                    br.game_info(),
+                    br
                 )
                 ordered = list(snap.get("ordered_parsed") or [])
                 if ordered and snap.get("reorder_proven") and ordered[0].get("valid") and ordered[0].get("checksum_valid"):
@@ -5056,7 +5068,10 @@ class WildHuntWorker(QObject):
                                 # proof still fails closed if a move cannot actually be used.
                                 try:
                                     lead_snap = get_live_party_snapshot(
-                                        self.host, int(getattr(br, "port", 4952)), br
+                                        self.host,
+                    int(getattr(br, "port", 4952)),
+                    br.game_info(),
+                    br
                                     )
                                     ordered_lead = list(lead_snap.get("ordered_parsed") or [])
                                     if ordered_lead and ordered_lead[0].get("valid") and ordered_lead[0].get("checksum_valid"):
