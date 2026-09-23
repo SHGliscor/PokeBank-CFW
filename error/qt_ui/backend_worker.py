@@ -854,28 +854,28 @@ class CountingBridge(Bridge):
                 time.sleep(0.25)
 
 class PartyRefreshWorker(QObject):
-    """One bounded party snapshot for idle dashboard telemetry.
+    """Persistent passive Gen-6 party telemetry worker.
 
-    This worker is only scheduled by MainWindow while no hunt or connection
-    probe is active. It never authorizes input and never changes hunt state.
+    HF100/D19-style behavior: one worker owns the passive RAM polling loop
+    across overworld, battle, and field re-entry. The GUI timer is only a
+    watchdog; it must never be the RAM-read loop itself.
     """
     party = Signal(list)
     diagnostic = Signal(str)
-    # D19d: idle dashboard RAM traffic must be visible in the same status
-    # counter as hunt-side RAM reads. This signal emits a DELTA, not an
-    # absolute worker-local count, because a fresh PartyRefreshWorker is
-    # created for every idle tick.
     ram_reads = Signal(int)
     finished = Signal()
 
-    def __init__(self, host, bridge_port=4952, timeout=1.0, game_profile=None):
+    def __init__(self, host, bridge_port=4952, timeout=1.0, game_profile=None,
+                 refresh_interval_s=0.50):
         super().__init__()
         self.host = host
         self.bridge_port = int(bridge_port)
         self.timeout = float(timeout)
         self.game_profile = dict(game_profile or {})
+        self.refresh_interval_s = max(0.20, float(refresh_interval_s))
         self._last_read_count = 0
         self._stop_requested = threading.Event()
+        self._last_error = None
 
     def request_stop(self):
         self._stop_requested.set()
@@ -890,45 +890,57 @@ class PartyRefreshWorker(QObject):
     @Slot()
     def run(self):
         try:
-            if self._stop_requested.is_set():
+            family = str(self.game_profile.get("family") or "").lower()
+            if family not in {"oras", "xy"}:
+                self.diagnostic.emit("PARTY TELEMETRY: waiting for supported game")
                 return
-            # Use the same bounded transport wrapper as hunt-side telemetry.
-            # D21 resolves the active PokePartySave runtime party and keeps
-            # addresses are close; discovery is finite and backs off on a miss.
+
             bridge = CountingBridge(
                 host=self.host,
                 port=self.bridge_port,
                 timeout=self.timeout,
                 read_callback=self._emit_idle_read_delta,
             )
-            if self.game_profile.get("family") == "xy":
-                from pokebot.common.xy_ram import read_party_decoded
-                parsed = read_party_decoded(bridge)
-                if self._stop_requested.is_set():
-                    return
-                self.party.emit(payload_from_parsed(parsed))
-            else:
-                # D21: read the active PokePartySave runtime object. The stale
-                # fixed/save blocks are never emitted as idle display authority.
-                snap = get_live_party_snapshot(
-                    self.host,
-                    self.bridge_port,
-                    bridge.game_info(),
-                    bridge,
-                )
-                if self._stop_requested.is_set():
-                    return
-                diagnostic = snap.get("diagnostic")
-                if diagnostic:
-                    self.diagnostic.emit(str(diagnostic))
-                self.party.emit(list(snap.get("payload") or []))
-        except Exception as exc:
-            # Display telemetry only: a missed refresh must never disturb the
-            # dashboard or alter hunt authority. Keep one visible breadcrumb so
-            # party-refresh failures are no longer silently swallowed forever.
-            self.diagnostic.emit(
-                f"PARTY IDLE REFRESH: {type(exc).__name__}: {exc}"
-            )
+
+            while not self._stop_requested.is_set():
+                tick_started = time.monotonic()
+                try:
+                    if family == "xy":
+                        from pokebot.common.xy_ram import read_party_decoded
+                        parsed = read_party_decoded(bridge)
+                        if self._stop_requested.is_set():
+                            break
+                        self.party.emit(payload_from_parsed(parsed))
+                    else:
+                        snap = get_live_party_snapshot(
+                            self.host,
+                            self.bridge_port,
+                            bridge.game_info(),
+                            bridge,
+                        )
+                        if self._stop_requested.is_set():
+                            break
+                        diagnostic = snap.get("diagnostic")
+                        if diagnostic and diagnostic != self._last_error:
+                            self.diagnostic.emit(str(diagnostic))
+                            self._last_error = str(diagnostic)
+                        payload = list(snap.get("payload") or [])
+                        if payload:
+                            self._last_error = None
+                            self.party.emit(payload)
+
+                    elapsed = time.monotonic() - tick_started
+                    self._stop_requested.wait(
+                        max(0.02, self.refresh_interval_s - elapsed)
+                    )
+                except Exception as exc:
+                    message = f"{type(exc).__name__}: {exc}"
+                    if message != self._last_error:
+                        self.diagnostic.emit(
+                            f"PARTY IDLE TELEMETRY RETRY: {message}"
+                        )
+                        self._last_error = message
+                    self._stop_requested.wait(self.refresh_interval_s)
         finally:
             self.finished.emit()
 
