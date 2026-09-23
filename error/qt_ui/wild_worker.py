@@ -1309,6 +1309,14 @@ class WildHuntWorker(QObject):
         base_attempts = len(attempts)
         extra_attempts = 24
         total_limit = base_attempts + extra_attempts
+        # Horde has its own stationary field-authority predicate below.  The
+        # generic frozen Run helper can reject a perfectly valid Horde return
+        # during the short battle->overworld transition because it expects the
+        # normal grass/field presentation to be stable immediately.  Do not
+        # make that generic predicate authoritative for Horde; once battle RAM
+        # is inactive, let the Horde-specific post-escape authority prove the
+        # zone/grid/settled state before any next trigger input.
+        horde_mode = self.method_key == "horde"
         self._check_stop()
         time.sleep(0.50)
         self._check_stop()
@@ -1322,6 +1330,18 @@ class WildHuntWorker(QObject):
             self._check_stop()
             before = br.u32(core.BATTLE_ADDR)
             if before != core.BATTLE_ACTIVE:
+                if horde_mode:
+                    return {
+                        "success": True,
+                        "accepted_attempt": None,
+                        "attempts": attempts,
+                        "field": {
+                            "stable": True,
+                            "status": "HORDE_BATTLE_INACTIVE_PENDING_STATIONARY_AUTHORITY",
+                        },
+                        "note": "Horde battle left active; defer field proof to stationary Horde authority",
+                        "run_recovery_extension_used": True,
+                    }
                 field = core.wait_field_stable(br, core.FIELD_RETURN_TIMEOUT_SEC)
                 return {
                     "success": bool(field.get("stable")),
@@ -1356,6 +1376,18 @@ class WildHuntWorker(QObject):
             attempts.append(item)
 
             if observed.get("left_active"):
+                if horde_mode:
+                    return {
+                        "success": True,
+                        "accepted_attempt": attempt,
+                        "attempts": attempts,
+                        "field": {
+                            "stable": True,
+                            "status": "HORDE_BATTLE_INACTIVE_PENDING_STATIONARY_AUTHORITY",
+                        },
+                        "first_nonactive": observed.get("first_nonactive"),
+                        "run_recovery_extension_used": True,
+                    }
                 field = core.wait_field_stable(br, core.FIELD_RETURN_TIMEOUT_SEC)
                 return {
                     "success": bool(field.get("stable")),
