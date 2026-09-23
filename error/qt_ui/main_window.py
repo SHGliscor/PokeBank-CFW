@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from .backend_worker import HuntWorker, ProbeWorker, PartyRefreshWorker, RngRefreshWorker, ControllerToolWorker
-from pokebot.common.live_party import get_runtime_party_snapshot
+from .party_monitor import get_live_party_snapshot
 from pokebot.common.bridge import Bridge
 from pokebot.common.gen6_locations import starter_location_for_family
 from pokebot.static.oras_static import get_static_profile
@@ -242,7 +242,7 @@ class MainWindow(QMainWindow):
         self.discord_rpc_timer.timeout.connect(self.discord_rpc.refresh)
         self.discord_rpc_timer.start()
 
-        # D25 Party Viewer: hunt-independent field runtime telemetry.
+        # D21 Party Viewer: hunt-independent field runtime telemetry.
         # It follows the game's live owner -> party -> PokemonParam -> PK6
         # pointer chain every 1 second. Hunt workers still own RAM access while
         # a hunt is running.
@@ -932,9 +932,14 @@ class MainWindow(QMainWindow):
                     port=self.bridge_port,
                     timeout=min(max(0.35, float(self.bridge_timeout)), 1.25),
                 )
-                live_party = get_runtime_party_snapshot(self.host, self.bridge_port, support_bridge)
+                live_party = get_live_party_snapshot(
+                    self.host,
+                    self.bridge_port,
+                    support_bridge.game_info(),
+                    support_bridge,
+                )
                 latest_probe["party"] = list(live_party.get("payload") or [])
-                latest_probe["party_diagnostic"] = str(live_party.get("diagnostic") or "PARTY D25 LIVE runtime snapshot")
+                latest_probe["party_diagnostic"] = str(live_party.get("diagnostic") or "PARTY D21 LIVE runtime snapshot")
                 latest_probe["party_source"] = live_party.get("source")
                 latest_probe["party_live_source"] = live_party.get("live_source")
             except Exception as party_exc:
