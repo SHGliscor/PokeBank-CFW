@@ -25,7 +25,8 @@ from pokebot.common.gen6_profiles import profile_from_game_info
 from pokebot.common.reset_adapter import run_reset_to_bag_for_profile
 from pokebot.common.xy_reset import run_reset_to_field as run_xy_reset_to_field
 from .appdata_store import get_profile_paths, increment_species_shiny_total
-from pokebot.common.live_party import get_runtime_party_snapshot, payload_from_parsed
+from .party_monitor import get_live_party_snapshot
+from pokebot.common.live_party import payload_from_parsed
 from pokebot.common.pk6 import parse_pk6
 from pokebot.common.ability_names import ability_name
 from pokebot.common.pk6 import NATURE_NAMES
@@ -907,9 +908,14 @@ class PartyRefreshWorker(QObject):
                     return
                 self.party.emit(payload_from_parsed(parsed))
             else:
-                # D25: read the executable-derived ORAS field runtime party
-                # pointer chain. The stale fixed/save blocks are never emitted.
-                snap = get_runtime_party_snapshot(self.host, self.bridge_port, bridge)
+                # D21: read the active PokePartySave runtime object. The stale
+                # fixed/save blocks are never emitted as idle display authority.
+                snap = get_live_party_snapshot(
+                    self.host,
+                    self.bridge_port,
+                    bridge.game_info(),
+                    bridge,
+                )
                 if self._stop_requested.is_set():
                     return
                 diagnostic = snap.get("diagnostic")
