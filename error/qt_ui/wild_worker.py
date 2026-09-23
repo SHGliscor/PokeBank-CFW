@@ -45,7 +45,6 @@ from pokebot.common.pokerus import (
     party_ui_payload,
 )
 from .party_monitor import probe_battle_party_payload, get_live_party_snapshot
-from pokebot.common.live_party import get_live_party_snapshot
 from pokebot.common.acknowledged_input import AcknowledgedInput
 from pokebot.common.gen6_cro import locate_loaded_modules
 from pokebot.common.xy_ram import read_trainer_ids as read_xy_trainer_ids, read_wild_decoded as read_xy_wild_decoded
