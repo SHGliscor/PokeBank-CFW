@@ -242,14 +242,11 @@ class MainWindow(QMainWindow):
         self.discord_rpc_timer.timeout.connect(self.discord_rpc.refresh)
         self.discord_rpc_timer.start()
 
-        # D21 Party Viewer: hunt-independent field runtime telemetry.
-        # It follows the game's live owner -> party -> PokemonParam -> PK6
-        # pointer chain every 1 second. Hunt workers still own RAM access while
-        # a hunt is running.
+        # HF100/D19: persistent hunt-independent party telemetry.
+        # The timer is ONLY a watchdog. The worker itself owns continuous
+        # passive RAM polling across overworld, battle, and field re-entry.
         self.party_refresh_timer = QTimer(self)
-        # One refresh per second keeps the idle party viewer responsive while
-        # halving short-lived QThread creation and RAM traffic on low-end PCs.
-        self.party_refresh_timer.setInterval(1_000)
+        self.party_refresh_timer.setInterval(2_000)
         self.party_refresh_timer.timeout.connect(self._refresh_idle_party)
         self.party_refresh_timer.start()
         QTimer.singleShot(2_500, self._refresh_idle_party)
@@ -1136,33 +1133,27 @@ class MainWindow(QMainWindow):
         self.probe_worker = None
 
     def _refresh_idle_party(self):
+        """Watchdog for the persistent HF100/D19 background party reader."""
         if self._closing:
             return
-        # The idle party reader MUST continue while a hunt worker is running.
-        # Horde recovery/preflight depends on the overworld party immediately
-        # after battle. The old D19 idle RAM path was hunt-independent.
-        # Only suppress it during a full connection probe, and never create
-        # overlapping idle refresh workers.
         if self.probe_thread and self.probe_thread.isRunning():
             return
         if self.party_refresh_thread and self.party_refresh_thread.isRunning():
             return
 
-        # Avoid a GAME_INFO request on every display refresh. The normal startup
-        # or manual connection probe establishes current_game_profile first.
-        # Both ORAS and the now-verified XY fixed party profile are supported.
         if not isinstance(self.current_game_profile, dict):
             return
         if self.current_game_profile.get("family") not in {"oras", "xy"}:
             return
 
         thread = QThread(self)
-        thread.setObjectName("IdlePartyRefreshThread")
+        thread.setObjectName("IdlePartyTelemetryThread")
         worker = PartyRefreshWorker(
             self.host,
             bridge_port=self.bridge_port,
             timeout=min(self.bridge_timeout, 1.25),
             game_profile=self.current_game_profile,
+            refresh_interval_s=0.50,
         )
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
@@ -1176,10 +1167,6 @@ class MainWindow(QMainWindow):
         self.party_refresh_thread = thread
         self.party_refresh_worker = worker
         thread.start()
-
-    def _party_refresh_cleanup(self):
-        self.party_refresh_thread = None
-        self.party_refresh_worker = None
 
     def _refresh_rng_tracker(self):
         """HF85 watchdog/start method for the persistent RNG telemetry thread."""
@@ -1576,10 +1563,8 @@ class MainWindow(QMainWindow):
         self.hunt_worker = None
 
     def _idle_ram_reads(self, delta):
-        # PartyRefreshWorker instances are short-lived and restart their own
-        # CountingBridge count at zero every tick, so idle telemetry arrives as
-        # deltas and is accumulated here. This makes background party polling
-        # visible instead of incorrectly leaving the footer at RAM Reads: 0.
+        # Persistent background party telemetry reports read deltas from its
+        # long-lived CountingBridge. Accumulate them in the dashboard footer.
         self.ram_read_count += max(0, int(delta))
         self.right_status.setText(
             f"RAM Reads: {self.ram_read_count} • background telemetry"
