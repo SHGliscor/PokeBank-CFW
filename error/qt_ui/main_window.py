@@ -1168,6 +1168,13 @@ class MainWindow(QMainWindow):
         self.party_refresh_worker = worker
         thread.start()
 
+    def _party_refresh_cleanup(self):
+        # The persistent worker has stopped (normally during shutdown or
+        # after a supported-game profile changed). Clear the references so
+        # the watchdog can recreate telemetry on the next tick.
+        self.party_refresh_thread = None
+        self.party_refresh_worker = None
+
     def _refresh_rng_tracker(self):
         """HF85 watchdog/start method for the persistent RNG telemetry thread."""
         if self._closing:
