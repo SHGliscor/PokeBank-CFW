@@ -443,7 +443,10 @@ class WildHuntWorker(QObject):
         """
         try:
             snap = get_live_party_snapshot(
-                self.host, int(getattr(br, "port", 4952)), br
+                self.host,
+                int(getattr(br, "port", 4952)),
+                br.game_info(),
+                br,
             )
         except Exception as exc:
             self._log(
@@ -460,7 +463,7 @@ class WildHuntWorker(QObject):
         ]
         self.party.emit(payload)
         self._log(
-            "PARTY LIVE ORDER D25: "
+            "PARTY LIVE ORDER D21: "
             f"source={snap.get('source')} species="
             f"{[row.get('species_id') for row in payload if row.get('species_id')]}"
         )
@@ -476,7 +479,10 @@ class WildHuntWorker(QObject):
         """
         try:
             snap = get_live_party_snapshot(
-                self.host, int(getattr(br, "port", 4952)), br
+                self.host,
+                int(getattr(br, "port", 4952)),
+                br.game_info(),
+                br,
             )
             live = dict(snap.get("live_source") or {})
             count = int(live.get("count") or 0)
