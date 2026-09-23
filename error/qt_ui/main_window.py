@@ -1138,10 +1138,11 @@ class MainWindow(QMainWindow):
     def _refresh_idle_party(self):
         if self._closing:
             return
-        # Never compete with a hunt worker or a full connection probe. D25 follows
-        # the live field runtime party without starting a hunt or sending input.
-        if self.hunt_thread and self.hunt_thread.isRunning():
-            return
+        # The idle party reader MUST continue while a hunt worker is running.
+        # Horde recovery/preflight depends on the overworld party immediately
+        # after battle. The old D19 idle RAM path was hunt-independent.
+        # Only suppress it during a full connection probe, and never create
+        # overlapping idle refresh workers.
         if self.probe_thread and self.probe_thread.isRunning():
             return
         if self.party_refresh_thread and self.party_refresh_thread.isRunning():
