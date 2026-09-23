@@ -44,8 +44,8 @@ from pokebot.common.pokerus import (
     compare_pokerus_snapshots,
     party_ui_payload,
 )
-from .party_monitor import probe_battle_party_payload
-from pokebot.common.live_party import get_runtime_party_snapshot
+from .party_monitor import probe_battle_party_payload, get_live_party_snapshot
+from pokebot.common.live_party import get_live_party_snapshot
 from pokebot.common.acknowledged_input import AcknowledgedInput
 from pokebot.common.gen6_cro import locate_loaded_modules
 from pokebot.common.xy_ram import read_trainer_ids as read_xy_trainer_ids, read_wild_decoded as read_xy_wild_decoded
@@ -443,7 +443,7 @@ class WildHuntWorker(QObject):
         this no longer emits the known-stale PokePartySave order.
         """
         try:
-            snap = get_runtime_party_snapshot(
+            snap = get_live_party_snapshot(
                 self.host, int(getattr(br, "port", 4952)), br
             )
         except Exception as exc:
@@ -476,7 +476,7 @@ class WildHuntWorker(QObject):
         Counts 1..5 explicitly mean a direct party return, while 6 means Box.
         """
         try:
-            snap = get_runtime_party_snapshot(
+            snap = get_live_party_snapshot(
                 self.host, int(getattr(br, "port", 4952)), br
             )
             live = dict(snap.get("live_source") or {})
@@ -523,7 +523,7 @@ class WildHuntWorker(QObject):
         # refresh move/PP telemetry from that same source when available.
         try:
             if self.method_key == "horde":
-                snap = get_runtime_party_snapshot(
+                snap = get_live_party_snapshot(
                     self.host, int(getattr(br, "port", 4952)), br
                 )
                 ordered = list(snap.get("ordered_parsed") or [])
@@ -2118,7 +2118,7 @@ class WildHuntWorker(QObject):
         when Sweet Scent is the holder's only recognized ORAS field move, so a
         holder that also knows Surf/Fly/etc. is intentionally rejected here.
         """
-        snap = get_runtime_party_snapshot(
+        snap = get_live_party_snapshot(
             self.host, int(getattr(br, "port", 4952)), br
         )
         ordered = list(snap.get("ordered_parsed") or [])
@@ -2224,7 +2224,7 @@ class WildHuntWorker(QObject):
 
     def _prepare_horde_lead_for_honey(self, br):
         """Capture lead/move authority without requiring Sweet Scent."""
-        snap = get_runtime_party_snapshot(
+        snap = get_live_party_snapshot(
             self.host, int(getattr(br, "port", 4952)), br
         )
         ordered = list(snap.get("ordered_parsed") or [])
@@ -3299,7 +3299,7 @@ class WildHuntWorker(QObject):
             # reflect the lead now, not only the hunt-start snapshot.
             live_lead = self.horde_lead_pk6
             try:
-                snap = get_runtime_party_snapshot(
+                snap = get_live_party_snapshot(
                     self.host, int(getattr(br, "port", 4952)), br
                 )
                 ordered = list(snap.get("ordered_parsed") or [])
@@ -5050,7 +5050,7 @@ class WildHuntWorker(QObject):
                                 # snapshot remains the bounded fallback and downstream target-selector
                                 # proof still fails closed if a move cannot actually be used.
                                 try:
-                                    lead_snap = get_runtime_party_snapshot(
+                                    lead_snap = get_live_party_snapshot(
                                         self.host, int(getattr(br, "port", 4952)), br
                                     )
                                     ordered_lead = list(lead_snap.get("ordered_parsed") or [])
