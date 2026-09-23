@@ -871,23 +871,3 @@ def visible_slot_for_identity(snapshot: dict, identity: tuple[int, int, int]) ->
         return order.index(tuple(identity)) + 1
     except ValueError:
         return None
-
-# ---------------------------------------------------------------------------
-# Public runtime-party authority override.
-# The legacy D21 PokePartySave mapper remains above only for historical/support
-# compatibility.  All get_live_party_snapshot/build_live_party_payload callers
-# below use the executable-derived live field pointer chain instead.
-# ---------------------------------------------------------------------------
-from pokebot.common.live_party import get_runtime_party_snapshot as _d23_runtime_party_snapshot
-
-
-def get_live_party_snapshot(host, bridge_port, game_info, bridge, *, force_save_refresh=False):
-    # game_info/force_save_refresh are retained in the public signature because
-    # Horde and wild-worker call sites already pass them.  D25 needs neither:
-    # the runtime pointer chain is validated from RAM on every read.
-    return _d23_runtime_party_snapshot(host, int(bridge_port), bridge)
-
-
-def build_live_party_payload(host, bridge_port, game_info, authoritative_bridge):
-    snap = _d23_runtime_party_snapshot(host, int(bridge_port), authoritative_bridge)
-    return list(snap.get("payload") or []), snap.get("diagnostic")
