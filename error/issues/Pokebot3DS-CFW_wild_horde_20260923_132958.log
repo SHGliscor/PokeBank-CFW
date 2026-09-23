@@ -1,0 +1,8 @@
+2026-09-23T13:29:58.863+01:00 WILD Horde — loading validated backend
+2026-09-23T13:29:59.162+01:00 ORAS GAME PROFILE LOCKED: Omega Ruby 0x000400000011C400 sango-1 identity_mode=omega_ruby_to_frozen_as_title_gate
+2026-09-23T13:29:59.176+01:00 SHINY AUTO-CATCH ARMED: Omega Ruby Horde mode; exactly one shiny => protect its RAM slot, KO the other four, then capture; 2+ shinies => unconditional Safety HOLD with no attacks or Balls. The hardware-proven Horde reducer waits for five-alive readiness and exact owner+0x93 COMMAND=1, then uses the per-battle COMMAND/MOVE fingerprint, exact target masks, one-step KO proof and protected-survivor capture path. The shiny coordinate is never touched.
+2026-09-23T13:29:59.191+01:00 SHINY CHARM RAM: PRESENT (item 632 hit(s): [{'offset': 0, 'address': '0x08C6F2B0', 'item_id': 632, 'item_id_hex': '0x0278', 'count': 1}])
+2026-09-23T13:29:59.282+01:00 PARTY LIVE REFRESH FAILED: TypeError: get_live_party_snapshot() missing 1 required positional argument: 'bridge' • telemetry only
+2026-09-23T13:29:59.284+01:00 POKERUS BASELINE: no active contagious party Pokérus
+2026-09-23T13:29:59.382+01:00 HORDE TRIGGER AUTO: Sweet Scent preflight unavailable; trying Honey read-only preflight: TypeError: get_live_party_snapshot() missing 1 required positional argument: 'bridge'
+2026-09-23T13:29:59.423+01:00 SAFETY_HOLD: TypeError: get_live_party_snapshot() missing 1 required positional argument: 'bridge'

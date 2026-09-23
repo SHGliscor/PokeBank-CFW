@@ -1,0 +1,103 @@
+{
+  "tool": "Pokebot3DS-CFW v0p43EI Wild Run Bridge Recovery + Field Reacquire",
+  "status": "SAFETY_HOLD",
+  "reason": "get_live_party_snapshot() missing 1 required positional argument: 'bridge'",
+  "game": "Omega Ruby",
+  "target_selection": null,
+  "look_for_target": {
+    "enabled": false,
+    "species": [],
+    "nature": "Any",
+    "shiny": "Any",
+    "gender": "Any",
+    "hidden_power_type": "Any",
+    "hidden_power_power": 60,
+    "ivs": {
+      "hp": {
+        "min": 0,
+        "max": 31
+      },
+      "attack": {
+        "min": 0,
+        "max": 31
+      },
+      "defense": {
+        "min": 0,
+        "max": 31
+      },
+      "sp_attack": {
+        "min": 0,
+        "max": 31
+      },
+      "sp_defense": {
+        "min": 0,
+        "max": 31
+      },
+      "speed": {
+        "min": 0,
+        "max": 31
+      }
+    }
+  },
+  "auto_throw_one_poke_ball_on_shiny": true,
+  "capture_ball_override": "best",
+  "auto_capture_test_initially_armed": false,
+  "auto_capture_test_pending": false,
+  "last_auto_capture_test": null,
+  "horde_auto_attack_test_initially_armed": false,
+  "horde_auto_attack_test_pending": false,
+  "last_horde_auto_attack_test": null,
+  "location_name": "Route 103",
+  "zone_id": 25,
+  "parent_map": 208,
+  "matrix_id": 1,
+  "method": "horde",
+  "movement_axis": "stationary",
+  "method_name": "Horde",
+  "movement_axis_name": "Stationary",
+  "host": "192.168.1.21",
+  "started": "2026-09-23T13:29:58+01:00",
+  "finished": "2026-09-23T13:29:59+01:00",
+  "elapsed_seconds": 0.758,
+  "encounters_completed": 0,
+  "battles_completed": 0,
+  "pokemon_seen_session": 0,
+  "encounter_timing": {
+    "field_to_encounter_last": null,
+    "field_to_encounter_average": 0.0,
+    "field_to_encounter_samples": 0,
+    "battle_to_field_last": null,
+    "battle_to_field_average": 0.0,
+    "battle_to_field_samples": 0,
+    "measured_cycle_last": null,
+    "measured_cycle_average": 0.0,
+    "measured_cycle_samples": 0
+  },
+  "horde_battles": 0,
+  "horde_trigger": "auto",
+  "horde_trigger_resolved": null,
+  "honey_inventory": {
+    "index": 0,
+    "item_id": 94,
+    "quantity": 999,
+    "address": 147254384,
+    "items_active_count": 10,
+    "active_index": 0
+  },
+  "last_opponent_set": null,
+  "global_trigger_cycles": 0,
+  "species_counts": {},
+  "run_attempt_counts": {},
+  "touch_timeout_recoveries": 0,
+  "last_encounter": null,
+  "last_shiny_auto_throw": null,
+  "fishing_chain": null,
+  "events": [
+    {
+      "time": "2026-09-23T13:29:59+01:00",
+      "type": "TypeError",
+      "error": "get_live_party_snapshot() missing 1 required positional argument: 'bridge'",
+      "traceback": "Traceback (most recent call last):\n  File \"C:\\Users\\roger\\Desktop\\error\\qt_ui\\wild_worker.py\", line 4580, in run\n    self._resolve_horde_trigger_setup(br)\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^\n  File \"C:\\Users\\roger\\Desktop\\error\\qt_ui\\wild_worker.py\", line 2297, in _resolve_horde_trigger_setup\n    self._validate_honey_setup(br)\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^\n  File \"C:\\Users\\roger\\Desktop\\error\\qt_ui\\wild_worker.py\", line 2264, in _validate_honey_setup\n    self._prepare_horde_lead_for_honey(br)\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^\n  File \"C:\\Users\\roger\\Desktop\\error\\qt_ui\\wild_worker.py\", line 2226, in _prepare_horde_lead_for_honey\n    snap = get_live_party_snapshot(\n        self.host, int(getattr(br, \"port\", 4952)), br\n    )\nTypeError: get_live_party_snapshot() missing 1 required positional argument: 'bridge'\n"
+    }
+  ]
+}
